@@ -862,6 +862,7 @@ let sortCol = 'goals';
 let sortDir = -1;
 let viewingGameId = null;
 let statsCategoryFilter = null;
+let gamesCategoryFilter = null;
 
 // ── Navigation ──
 function switchView(name) {
@@ -1278,9 +1279,14 @@ function openEditCategoryModal(catId) {
   `);
 }
 
-// ── Stats category filter ──
+// ── Category filters ──
 function filterStatsByCategory(catId) {
   statsCategoryFilter = catId;
+  render();
+}
+
+function filterGamesByCategory(catId) {
+  gamesCategoryFilter = catId;
   render();
 }
 
@@ -1416,16 +1422,47 @@ function renderHistory() {
     return;
   }
 
-  const finished = data.games.filter(g => g.finished).sort((a, b) => new Date(b.date) - new Date(a.date));
+  let finished = data.games.filter(g => g.finished).sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  if (finished.length === 0) {
+  // Filter pills
+  let filterHTML = '';
+  if (data.categories.length > 0) {
+    const pills = [`<button class="filter-pill${gamesCategoryFilter === null ? ' active' : ''}" onclick="filterGamesByCategory(null)">All</button>`];
+    data.categories.forEach(c => {
+      pills.push(`<button class="filter-pill${gamesCategoryFilter === c.id ? ' active' : ''}" onclick="filterGamesByCategory('${c.id}')">${c.emoji} ${c.name}</button>`);
+    });
+    filterHTML = `<div class="filter-row">${pills.join('')}</div>`;
+  }
+
+  // Apply filter
+  if (gamesCategoryFilter !== null) {
+    finished = finished.filter(g => g.categoryId === gamesCategoryFilter);
+  }
+
+  if (data.games.filter(g => g.finished).length === 0) {
     el.innerHTML = `
       <div class="view-header"><h1>Games</h1><button class="btn btn-sm" onclick="openAddHistoricalGameModal()">+ Add Game</button></div>
+      ${filterHTML}
       <div class="empty-state">
         <p>No completed games yet.</p>
       </div>`;
     return;
   }
+
+  // W-L-T / GF / GA / GD summary
+  let w=0, l=0, t=0, gf=0, ga=0;
+  finished.forEach(g => {
+    const ours = g.events.length, theirs = g.opponentGoals;
+    gf += ours; ga += theirs;
+    if (ours > theirs) w++; else if (ours < theirs) l++; else t++;
+  });
+  const gd = gf - ga;
+  const summaryHTML = `<div class="card" style="display:flex;justify-content:space-around;text-align:center;padding:0.75rem">
+    <div><div style="font-size:1.3rem;font-weight:800">${w}-${l}-${t}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">W-L-T</div></div>
+    <div><div style="font-size:1.3rem;font-weight:800">${gf}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GF</div></div>
+    <div><div style="font-size:1.3rem;font-weight:800">${ga}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GA</div></div>
+    <div><div style="font-size:1.3rem;font-weight:800;color:${gd>0?'var(--green)':gd<0?'var(--red)':'var(--text)'}">${gd>0?'+':''}${gd}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GD</div></div>
+  </div>`;
 
   const gameCards = finished.map(g => {
     const scorers = {};
@@ -1450,6 +1487,8 @@ function renderHistory() {
 
   el.innerHTML = `
     <div class="view-header"><h1>Games</h1><button class="btn btn-sm" onclick="openAddHistoricalGameModal()">+ Add Game</button></div>
+    ${filterHTML}
+    ${summaryHTML}
     ${gameCards}
   `;
 }
