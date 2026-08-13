@@ -1642,7 +1642,7 @@ function renderStats() {
   });
 
   const rows = Object.entries(stats)
-    .filter(([, s]) => s.goals + s.assists > 0)
+    .filter(([id]) => getPlayer(id))
     .sort((a, b) => {
       let av, bv;
       if (sortCol === 'total') { av = a[1].goals + a[1].assists; bv = b[1].goals + b[1].assists; }
