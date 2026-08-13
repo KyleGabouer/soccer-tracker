@@ -725,6 +725,69 @@ const SUPABASE_URL = 'https://thzekzodeuizscohwirj.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_5Oi0WQ_pKrGbCVVo0zXfTw_BMvz-4oF';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ── Auth (only a signed-in user — you — can edit) ──
+let currentSession = null;
+
+function isAdmin() { return !!currentSession; }
+
+sb.auth.getSession().then(({ data }) => {
+  currentSession = data.session;
+  render();
+});
+
+sb.auth.onAuthStateChange((_event, session) => {
+  currentSession = session;
+  render();
+});
+
+async function adminLogin() {
+  const email = document.getElementById('admin-email').value.trim();
+  const password = document.getElementById('admin-password').value;
+  const errEl = document.getElementById('admin-login-error');
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = 'block';
+    return;
+  }
+  closeModal();
+}
+
+async function adminLogout() {
+  await sb.auth.signOut();
+  render();
+}
+
+function openAdminLoginModal() {
+  openModal(`
+    <h2>Admin Login</h2>
+    <div class="form-group">
+      <label>Email</label>
+      <input class="input" id="admin-email" type="email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')adminLogin()">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input class="input" id="admin-password" type="password" onkeydown="if(event.key==='Enter')adminLogin()">
+    </div>
+    <div id="admin-login-error" style="display:none;color:var(--red);font-size:0.82rem;margin-bottom:0.5rem"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="adminLogin()">Log In</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('admin-email')?.focus(), 100);
+}
+
+function downloadBackup() {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `soccer-stats-backup-${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── Data layer ──
 const STORAGE_KEY = 'soccer-stats';
 
@@ -783,6 +846,9 @@ async function loadDataFromSupabase() {
 }
 
 function saveData(d) {
+  // Safety net: viewers without an admin session can't persist changes anyway
+  // (the database rejects the write), so don't bother trying.
+  if (!isAdmin()) return;
   // Sync write to localStorage (immediate cache)
   saveDataLocal(d);
   // Async write to Supabase (fire-and-forget)
@@ -1020,6 +1086,7 @@ function removePlayer(id) {
 function openPlayerProfile(playerId) {
   const player = getPlayer(playerId);
   if (!player) return;
+  const admin = isAdmin();
 
   const stats = getPlayerStats(playerId);
   const finishedGames = data.games.filter(g => g.finished);
@@ -1049,10 +1116,10 @@ function openPlayerProfile(playerId) {
 
   openModal(`
     <h2>Player Profile</h2>
-    <div class="profile-photo-wrap" onclick="document.getElementById('profile-photo-input').click()">
+    <div class="profile-photo-wrap"${admin ? ` onclick="document.getElementById('profile-photo-input').click()"` : ''}>
       ${photoEl}
     </div>
-    <div class="profile-photo-label">Tap photo to change</div>
+    ${admin ? `<div class="profile-photo-label">Tap photo to change</div>
     <input type="file" id="profile-photo-input" accept="image/*" style="display:none" onchange="resizeAndStorePhoto('${playerId}', this.files[0])">
     <div class="form-group">
       <label>Name</label>
@@ -1061,16 +1128,16 @@ function openPlayerProfile(playerId) {
     <div class="form-group">
       <label>Number</label>
       <input class="input" id="profile-number" value="${player.number || ''}" style="max-width:100px">
-    </div>
+    </div>` : `<div style="text-align:center;font-weight:700;font-size:1.05rem;margin-bottom:0.75rem">${player.number ? '#' + player.number + ' ' : ''}${player.name}</div>`}
     <div class="profile-stats-row">
       <div class="profile-stat"><div class="ps-val">${stats.goals}</div><div class="ps-label">Goals</div></div>
       <div class="profile-stat"><div class="ps-val">${stats.assists}</div><div class="ps-label">Assists</div></div>
     </div>
     ${gameLog ? `<div class="card"><label>Game Log</label><div class="profile-game-log">${gameLog}</div></div>` : ''}
     <div class="modal-actions">
-      <button class="btn btn-danger btn-sm" onclick="confirmDeletePlayer('${playerId}')">Delete</button>
-      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-      <button class="btn" onclick="savePlayerProfile('${playerId}')">Save</button>
+      ${admin ? `<button class="btn btn-danger btn-sm" onclick="confirmDeletePlayer('${playerId}')">Delete</button>` : ''}
+      <button class="btn btn-outline" onclick="closeModal()">${admin ? 'Cancel' : 'Close'}</button>
+      ${admin ? `<button class="btn" onclick="savePlayerProfile('${playerId}')">Save</button>` : ''}
     </div>
   `);
 }
@@ -1302,6 +1369,7 @@ function render() {
 function renderGame() {
   const el = document.getElementById('view-game');
   const game = getActiveGame();
+  const admin = isAdmin();
 
   if (!game) {
     el.innerHTML = `
@@ -1309,47 +1377,13 @@ function renderGame() {
       <div class="empty-state">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         <h3>No active game</h3>
-        <p>${data.players.length === 0 ? 'Add players to your roster first, then start a game.' : 'Start a new game to begin tracking stats.'}</p>
-        ${data.players.length > 0 ? `<button class="btn" onclick="openNewGameModal()">Start Game</button>` : `<button class="btn" onclick="switchView('roster')">Set Up Roster</button>`}
+        <p>${admin ? (data.players.length === 0 ? 'Add players to your roster first, then start a game.' : 'Start a new game to begin tracking stats.') : 'Check back once a game is underway.'}</p>
+        ${admin ? (data.players.length > 0 ? `<button class="btn" onclick="openNewGameModal()">Start Game</button>` : `<button class="btn" onclick="switchView('roster')">Set Up Roster</button>`) : ''}
       </div>`;
     return;
   }
 
-  const goals = game.events.length;
-  const isSelecting = selectionState !== null;
-  const isAssistStep = selectionState?.type === 'assist';
   const cat = game.categoryId ? getCategoryById(game.categoryId) : null;
-
-  let prompt = '';
-  if (!isSelecting) {
-    prompt = `<div class="prompt-text">Tap the player who scored</div>`;
-  } else if (isAssistStep) {
-    const scorer = playerShort(selectionState.goalScorerId);
-    prompt = `<div class="prompt-text" style="background:var(--blue-dim);color:var(--blue)">Goal by ${scorer} — tap the assister</div>`;
-  }
-
-  const playerBtns = sortedPlayers().map(p => {
-    let cls = 'player-btn';
-    if (!isSelecting) cls += ' selecting-goal';
-    if (isAssistStep && p.id !== selectionState.goalScorerId) cls += ' selecting-assist';
-    if (isAssistStep && p.id === selectionState.goalScorerId) cls += '" style="opacity:0.3;pointer-events:none';
-
-    const onclick = !isSelecting
-      ? `selectGoalScorer('${p.id}')`
-      : (isAssistStep && p.id !== selectionState.goalScorerId ? `selectAssist('${p.id}')` : '');
-
-    return `<button class="${cls}" onclick="${onclick}">
-      <span class="p-number">${p.number || '–'}</span>
-      <span class="p-name">${p.name}</span>
-    </button>`;
-  }).join('');
-
-  const ownGoalBtn = !isSelecting
-    ? `<button class="player-btn selecting-goal" onclick="selectGoalScorer('${OWN_GOAL_ID}')" style="border-color:var(--yellow);background:var(--yellow-dim)">
-        <span class="p-number">OG</span>
-        <span class="p-name">Own Goal</span>
-      </button>`
-    : '';
 
   const goalLog = game.events.slice().reverse().map((ev, i) => `
     <div class="goal-entry">
@@ -1358,14 +1392,63 @@ function renderGame() {
         <div class="goal-scorer">${playerLabel(ev.scorerId)}</div>
         ${ev.assistId === PENALTY_KICK_ID || ev.assistId === FREE_KICK_ID ? `<div class="goal-assist">${playerLabel(ev.assistId)}</div>` : ev.assistId ? `<div class="goal-assist">Assist: ${playerLabel(ev.assistId)}</div>` : '<div class="goal-assist">Unassisted</div>'}
       </div>
-      <button class="goal-delete" onclick="removeGoal('${game.id}','${ev.id}')">✕</button>
+      ${admin ? `<button class="goal-delete" onclick="removeGoal('${game.id}','${ev.id}')">✕</button>` : ''}
     </div>
   `).join('');
+
+  const oppGoalsControls = admin ? `
+        <button class="btn btn-sm btn-outline" onclick="incrementOpponentGoals(-1)" style="padding:0.3rem 0.6rem;font-size:1rem;line-height:1">−</button>
+        <span style="font-weight:700;min-width:1.5rem;text-align:center">${game.opponentGoals}</span>
+        <button class="btn btn-sm btn-outline" onclick="incrementOpponentGoals(1)" style="padding:0.3rem 0.6rem;font-size:1rem;line-height:1">+</button>
+  ` : `<span style="font-weight:700;min-width:1.5rem;text-align:center">${game.opponentGoals}</span>`;
+
+  let liveControls = '';
+  if (admin) {
+    const isSelecting = selectionState !== null;
+    const isAssistStep = selectionState?.type === 'assist';
+
+    let prompt = '';
+    if (!isSelecting) {
+      prompt = `<div class="prompt-text">Tap the player who scored</div>`;
+    } else if (isAssistStep) {
+      const scorer = playerShort(selectionState.goalScorerId);
+      prompt = `<div class="prompt-text" style="background:var(--blue-dim);color:var(--blue)">Goal by ${scorer} — tap the assister</div>`;
+    }
+
+    const playerBtns = sortedPlayers().map(p => {
+      let cls = 'player-btn';
+      if (!isSelecting) cls += ' selecting-goal';
+      if (isAssistStep && p.id !== selectionState.goalScorerId) cls += ' selecting-assist';
+      if (isAssistStep && p.id === selectionState.goalScorerId) cls += '" style="opacity:0.3;pointer-events:none';
+
+      const onclick = !isSelecting
+        ? `selectGoalScorer('${p.id}')`
+        : (isAssistStep && p.id !== selectionState.goalScorerId ? `selectAssist('${p.id}')` : '');
+
+      return `<button class="${cls}" onclick="${onclick}">
+        <span class="p-number">${p.number || '–'}</span>
+        <span class="p-name">${p.name}</span>
+      </button>`;
+    }).join('');
+
+    const ownGoalBtn = !isSelecting
+      ? `<button class="player-btn selecting-goal" onclick="selectGoalScorer('${OWN_GOAL_ID}')" style="border-color:var(--yellow);background:var(--yellow-dim)">
+          <span class="p-number">OG</span>
+          <span class="p-name">Own Goal</span>
+        </button>`
+      : '';
+
+    liveControls = `
+      ${prompt}
+      <div class="player-grid">${playerBtns}${ownGoalBtn}</div>
+      ${isAssistStep ? `<div class="skip-assist"><button class="btn btn-sm btn-outline" onclick="skipAssist()">No assist</button> <button class="btn btn-sm btn-outline" onclick="recordAssistType('${PENALTY_KICK_ID}')">Penalty Kick</button> <button class="btn btn-sm btn-outline" onclick="recordAssistType('${FREE_KICK_ID}')">Free Kick</button> <button class="btn btn-sm btn-outline" onclick="cancelSelection()">Cancel</button></div>` : ''}
+    `;
+  }
 
   el.innerHTML = `
     <div class="view-header">
       <h1>Live Game</h1>
-      <button class="btn btn-sm btn-danger" onclick="confirmEndGame()">End Game</button>
+      ${admin ? `<button class="btn btn-sm btn-danger" onclick="confirmEndGame()">End Game</button>` : ''}
     </div>
     <div class="game-status">
       <div class="game-opponent">vs ${game.opponent}${cat ? ` <span class="category-badge">${cat.emoji} ${cat.name}</span>` : ''}</div>
@@ -1373,20 +1456,17 @@ function renderGame() {
       <div class="game-clock">${formatDate(game.date)}</div>
       <div style="margin-top:0.5rem;display:flex;align-items:center;justify-content:center;gap:0.75rem">
         <span style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Opponent Goals</span>
-        <button class="btn btn-sm btn-outline" onclick="incrementOpponentGoals(-1)" style="padding:0.3rem 0.6rem;font-size:1rem;line-height:1">−</button>
-        <span style="font-weight:700;min-width:1.5rem;text-align:center">${game.opponentGoals}</span>
-        <button class="btn btn-sm btn-outline" onclick="incrementOpponentGoals(1)" style="padding:0.3rem 0.6rem;font-size:1rem;line-height:1">+</button>
+        ${oppGoalsControls}
       </div>
     </div>
-    ${prompt}
-    <div class="player-grid">${playerBtns}${ownGoalBtn}</div>
-    ${isAssistStep ? `<div class="skip-assist"><button class="btn btn-sm btn-outline" onclick="skipAssist()">No assist</button> <button class="btn btn-sm btn-outline" onclick="recordAssistType('${PENALTY_KICK_ID}')">Penalty Kick</button> <button class="btn btn-sm btn-outline" onclick="recordAssistType('${FREE_KICK_ID}')">Free Kick</button> <button class="btn btn-sm btn-outline" onclick="cancelSelection()">Cancel</button></div>` : ''}
+    ${liveControls}
     ${game.events.length > 0 ? `<div class="card goal-log"><label>Goals this game</label>${goalLog}</div>` : ''}
   `;
 }
 
 function renderRoster() {
   const el = document.getElementById('view-roster');
+  const admin = isAdmin();
 
   const cards = sortedPlayers().map(p => {
     const s = getPlayerStats(p.id);
@@ -1402,20 +1482,21 @@ function renderRoster() {
 
   el.innerHTML = `
     <div class="view-header"><h1>Roster</h1></div>
-    <div class="card">
+    ${admin ? `<div class="card">
       <label>Add Player</label>
       <div class="form-row">
         <input class="input" id="new-player-name" placeholder="Name" onkeydown="if(event.key==='Enter')addPlayer()">
         <input class="input" id="new-player-number" placeholder="#" style="max-width:60px" onkeydown="if(event.key==='Enter')addPlayer()">
         <button class="btn btn-sm" onclick="addPlayer()">Add</button>
       </div>
-    </div>
+    </div>` : ''}
     ${data.players.length > 0 ? `<div class="roster-grid">${cards}</div>` : '<div class="empty-state"><p>No players yet. Add your team above.</p></div>'}
   `;
 }
 
 function renderHistory() {
   const el = document.getElementById('view-history');
+  const admin = isAdmin();
 
   if (viewingGameId) {
     renderGameDetail(el);
@@ -1441,7 +1522,7 @@ function renderHistory() {
 
   if (data.games.filter(g => g.finished).length === 0) {
     el.innerHTML = `
-      <div class="view-header"><h1>Games</h1><button class="btn btn-sm" onclick="openAddHistoricalGameModal()">+ Add Game</button></div>
+      <div class="view-header"><h1>Games</h1>${admin ? `<button class="btn btn-sm" onclick="openAddHistoricalGameModal()">+ Add Game</button>` : ''}</div>
       ${filterHTML}
       <div class="empty-state">
         <p>No completed games yet.</p>
@@ -1486,7 +1567,7 @@ function renderHistory() {
   }).join('');
 
   el.innerHTML = `
-    <div class="view-header"><h1>Games</h1><button class="btn btn-sm" onclick="openAddHistoricalGameModal()">+ Add Game</button></div>
+    <div class="view-header"><h1>Games</h1>${admin ? `<button class="btn btn-sm" onclick="openAddHistoricalGameModal()">+ Add Game</button>` : ''}</div>
     ${filterHTML}
     ${summaryHTML}
     ${gameCards}
@@ -1501,6 +1582,7 @@ function viewGame(id) {
 function renderGameDetail(el) {
   const game = data.games.find(g => g.id === viewingGameId);
   if (!game) { viewingGameId = null; render(); return; }
+  const admin = isAdmin();
 
   const stats = {};
   game.events.forEach(ev => {
@@ -1526,7 +1608,7 @@ function renderGameDetail(el) {
         <div class="goal-scorer">${playerLabel(ev.scorerId)}</div>
         ${ev.assistId === PENALTY_KICK_ID || ev.assistId === FREE_KICK_ID ? `<div class="goal-assist">${playerLabel(ev.assistId)}</div>` : ev.assistId ? `<div class="goal-assist">Assist: ${playerLabel(ev.assistId)}</div>` : '<div class="goal-assist">Unassisted</div>'}
       </div>
-      <button class="goal-delete" onclick="removeGoal('${game.id}','${ev.id}')">✕</button>
+      ${admin ? `<button class="goal-delete" onclick="removeGoal('${game.id}','${ev.id}')">✕</button>` : ''}
     </div>
   `).join('');
 
@@ -1534,7 +1616,7 @@ function renderGameDetail(el) {
   const catBadge = cat ? ` <span class="category-badge">${cat.emoji} ${cat.name}</span>` : '';
 
   // Goal selection UI for finished games
-  const isSelectingForThis = selectionState && selectionState.gameId === game.id;
+  const isSelectingForThis = admin && selectionState && selectionState.gameId === game.id;
   const isAssistStep = isSelectingForThis && selectionState.type === 'assist';
   let selectionUI = '';
 
@@ -1584,11 +1666,11 @@ function renderGameDetail(el) {
       <span class="game-card-score" style="font-size:1.5rem;color:${game.events.length > game.opponentGoals ? 'var(--green)' : game.events.length < game.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(game)}</span>
     </div>
     <div style="font-size:0.85rem;color:var(--muted);margin-bottom:1rem">${formatDate(game.date)}${catBadge}</div>
-    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
+    ${admin ? `<div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
       <button class="btn btn-sm btn-blue" onclick="openEditGameModal('${game.id}')">Edit Game</button>
       <button class="btn btn-sm${isSelectingForThis ? ' btn-outline' : ''}" onclick="${isSelectingForThis ? 'cancelSelection()' : `startAddGoalToGame('${game.id}')`}">${isSelectingForThis ? 'Cancel Add' : 'Add Goal'}</button>
       <button class="btn btn-sm btn-danger" onclick="if(confirm('Delete this game?'))deleteGame('${game.id}')">Delete</button>
-    </div>
+    </div>` : ''}
     ${selectionUI}
     ${rows ? `<div class="card"><label>Player Stats</label><table class="stats-table"><thead><tr><th>Player</th><th>G</th><th>A</th><th>Tot</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
     ${goalLog ? `<div class="card"><label>Goal Log</label>${goalLog}</div>` : '<div class="empty-state"><p>No goals recorded.</p></div>'}
@@ -1686,25 +1768,58 @@ function setSort(col) {
 
 function renderSettings() {
   const el = document.getElementById('view-settings');
+  const admin = isAdmin();
 
   const catItems = data.categories.map(c => `
     <div class="settings-item">
-      <div class="settings-item-left" onclick="openEditCategoryModal('${c.id}')">
+      <div class="settings-item-left"${admin ? ` onclick="openEditCategoryModal('${c.id}')"` : ' style="cursor:default"'}>
         <span class="settings-item-emoji">${c.emoji}</span>
         <span class="settings-item-name">${c.name}</span>
       </div>
     </div>
   `).join('');
 
+  const adminSection = admin ? `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <label style="margin-bottom:0.2rem">Signed in</label>
+          <div style="font-size:0.85rem;color:var(--muted)">${currentSession.user.email}</div>
+        </div>
+        <button class="btn btn-sm btn-outline" onclick="adminLogout()">Log Out</button>
+      </div>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <label style="margin-bottom:0.2rem">Backup</label>
+          <div style="font-size:0.85rem;color:var(--muted)">Download all data as JSON</div>
+        </div>
+        <button class="btn btn-sm btn-outline" onclick="downloadBackup()">Download</button>
+      </div>
+    </div>
+  ` : `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <label style="margin-bottom:0.2rem">Viewing as guest</label>
+          <div style="font-size:0.85rem;color:var(--muted)">Log in to edit stats and data</div>
+        </div>
+        <button class="btn btn-sm btn-outline" onclick="openAdminLoginModal()">Log In</button>
+      </div>
+    </div>
+  `;
+
   el.innerHTML = `
     <div class="view-header"><h1>More</h1></div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
         <label style="margin-bottom:0">Game Categories</label>
-        <button class="btn btn-sm" onclick="openAddCategoryModal()">+ Add</button>
+        ${admin ? `<button class="btn btn-sm" onclick="openAddCategoryModal()">+ Add</button>` : ''}
       </div>
       ${catItems || '<div style="color:var(--muted);font-size:0.85rem;padding:0.5rem 0">No categories yet. Add one to tag your games.</div>'}
     </div>
+    ${adminSection}
   `;
 }
 
