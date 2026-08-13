@@ -1581,7 +1581,7 @@ function renderGameDetail(el) {
     <button class="game-detail-back" onclick="viewingGameId=null;selectionState=null;render()">← All Games</button>
     <div class="view-header">
       <h1>vs ${game.opponent}</h1>
-      <span class="game-card-score" style="font-size:1.5rem">${formatScore(game)}</span>
+      <span class="game-card-score" style="font-size:1.5rem;color:${game.events.length > game.opponentGoals ? 'var(--green)' : game.events.length < game.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(game)}</span>
     </div>
     <div style="font-size:0.85rem;color:var(--muted);margin-bottom:1rem">${formatDate(game.date)}${catBadge}</div>
     <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
