@@ -9,8 +9,9 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
 ## How It's Built
 - Single-page web app — everything is in `index.html` at the project root
 - Works on mobile and desktop browsers
-- Data stored in localStorage
-- Deployed via Surge.sh
+- Data stored in Supabase (Postgres) with localStorage as offline cache
+- Supabase JS client loaded via CDN; anon key is in `index.html`
+- Deployed via GitHub Pages (repo: `soccer-tracker`, branch: `main`)
 
 ## Features
 - Quick-entry interface for recording goals/assists during live games
@@ -20,7 +21,7 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
 - Add historical (past) games from the Games tab with "+ Add Game"
 - Player roster as card grid with photos, tappable to open profile modal
 - Player profiles with editable name, number, photo; shows season stats and per-game log
-- Photos resized to 200x200 JPEG and stored as base64 in localStorage
+- Photos resized to 200x200 JPEG and stored as base64 in Supabase
 - Game categories (e.g. "Tournament", "Regular Season") — create/edit/delete in More tab
 - Category assigned when starting a game via dropdown
 - Category badges shown on game cards in history and game detail
@@ -38,7 +39,11 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
   activeGameId: null | string
 }
 ```
-- `loadData()` migrates old data by backfilling `photo: null`, `categoryId: null`, `categories: []`, and `opponentGoals: 0`
+- In-memory `data` object is the single source of truth at runtime
+- `saveData(data)` writes to localStorage (sync) and Supabase (async, fire-and-forget)
+- On page load: renders from localStorage immediately, then refreshes from Supabase
+- Supabase tables: `players`, `games`, `categories`, `app_state`
+- `games.events` stored as JSONB column (not a separate table)
 
 ## What We Don't Do
 - No user accounts or login (this is a personal tool)
