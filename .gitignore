@@ -1,0 +1,3 @@
+node_modules/
+local-data-output.json
+supabase-setup.sql

@@ -1,0 +1,1823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Soccer Stats Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --surface: #1a1d23;
+      --surface2: #22262e;
+      --border: rgba(255,255,255,0.08);
+      --text: #e4e4e7;
+      --muted: #71717a;
+      --green: #22c55e;
+      --green-dim: rgba(34,197,94,0.15);
+      --blue: #3b82f6;
+      --blue-dim: rgba(59,130,246,0.15);
+      --yellow: #eab308;
+      --yellow-dim: rgba(234,179,8,0.15);
+      --red: #ef4444;
+      --red-dim: rgba(239,68,68,0.15);
+      --radius: 12px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      overflow-x: hidden;
+    }
+
+    /* ── Tab bar ── */
+    .tab-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+
+    .tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 0;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+
+    .tab.active { color: var(--green); }
+    .tab svg { width: 22px; height: 22px; }
+
+    /* ── Views ── */
+    .view { display: none; padding: 1rem 1rem 6rem; }
+    .view.active { display: block; }
+
+    /* ── Header ── */
+    .view-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+      padding-top: 0.5rem;
+    }
+
+    .view-header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0.55rem 1rem;
+      background: var(--green);
+      color: #000;
+      border: none;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      font-family: inherit;
+    }
+
+    .btn:active { opacity: 0.7; }
+    .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.78rem; }
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-danger { background: var(--red); }
+    .btn-blue { background: var(--blue); color: #fff; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      margin-bottom: 0.75rem;
+    }
+
+    /* ── Forms ── */
+    .input, select.input {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input:focus { border-color: var(--green); }
+    .input::placeholder { color: var(--muted); }
+
+    .form-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .form-row .input { flex: 1; }
+
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 0.4rem;
+    }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border-radius: 16px 16px 0 0;
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 500px;
+      max-height: 85dvh;
+      overflow-y: auto;
+      animation: slideUp 0.25s ease;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+
+    .modal h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1.25rem;
+    }
+
+    .modal-actions .btn { flex: 1; justify-content: center; }
+
+    /* ── Roster Grid ── */
+    .roster-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+    }
+
+    .roster-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0.85rem 0.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+    }
+
+    .roster-card:active { transform: scale(0.96); }
+
+    .roster-photo {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      object-fit: cover;
+      margin-bottom: 0.4rem;
+      background: var(--surface2);
+      border: 2px solid var(--border);
+    }
+
+    .roster-initials {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: var(--surface2);
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .roster-card .rc-number {
+      font-size: 0.8rem;
+      font-weight: 800;
+      color: var(--green);
+    }
+
+    .roster-card .rc-name {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+
+    .roster-card .rc-stats {
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* ── Profile modal ── */
+    .profile-photo-wrap {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 1rem;
+      cursor: pointer;
+    }
+
+    .profile-photo {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--surface2);
+      border: 3px solid var(--border);
+    }
+
+    .profile-initials {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: var(--surface2);
+      border: 3px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .profile-photo-label {
+      text-align: center;
+      font-size: 0.72rem;
+      color: var(--green);
+      margin-top: 0.3rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .profile-stats-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .profile-stat {
+      flex: 1;
+      text-align: center;
+      padding: 0.6rem 0;
+      background: var(--surface2);
+      border-radius: 8px;
+    }
+
+    .profile-stat .ps-val {
+      font-size: 1.3rem;
+      font-weight: 800;
+    }
+
+    .profile-stat .ps-label {
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .profile-game-log {
+      margin-top: 0.25rem;
+    }
+
+    .profile-game-entry {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.82rem;
+    }
+
+    .profile-game-entry:last-child { border-bottom: none; }
+
+    .pge-opp { font-weight: 600; }
+    .pge-date { color: var(--muted); font-size: 0.75rem; }
+    .pge-stats { font-weight: 700; color: var(--green); font-size: 0.8rem; }
+
+    /* ── Old roster items (unused now but kept for delete btn style) ── */
+    .delete-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 4px;
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
+    .delete-btn:hover { color: var(--red); }
+
+    /* ── Live Game ── */
+    .game-status {
+      text-align: center;
+      padding: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 1rem;
+    }
+
+    .game-opponent {
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .game-score {
+      font-size: 3rem;
+      font-weight: 800;
+      letter-spacing: -2px;
+      margin: 0.25rem 0;
+    }
+
+    .game-clock {
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .prompt-text {
+      text-align: center;
+      padding: 0.75rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--green);
+      background: var(--green-dim);
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+
+    .player-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .player-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      padding: 0.85rem 0.4rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .player-btn:active { transform: scale(0.95); }
+    .player-btn .p-number { font-size: 1.1rem; font-weight: 800; }
+    .player-btn .p-name { font-size: 0.65rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+    .player-btn.selecting-goal {
+      border-color: var(--green);
+      background: var(--green-dim);
+    }
+
+    .player-btn.selecting-assist {
+      border-color: var(--blue);
+      background: var(--blue-dim);
+    }
+
+    .goal-log {
+      margin-top: 0.5rem;
+    }
+
+    .goal-entry {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+
+    .goal-entry:last-child { border-bottom: none; }
+
+    .goal-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--green-dim);
+      color: var(--green);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 800;
+      margin-right: 0.6rem;
+      flex-shrink: 0;
+    }
+
+    .goal-info { flex: 1; }
+    .goal-scorer { font-weight: 600; }
+    .goal-assist { color: var(--muted); font-size: 0.78rem; }
+
+    .goal-delete {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.9rem;
+      padding: 4px 6px;
+    }
+
+    /* ── No game state ── */
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--muted);
+    }
+
+    .empty-state svg { width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.3; }
+    .empty-state h3 { color: var(--text); margin-bottom: 0.5rem; }
+    .empty-state p { font-size: 0.88rem; margin-bottom: 1.5rem; }
+
+    /* ── Season stats ── */
+    .stats-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .stats-table th {
+      text-align: left;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 0.6rem 0.5rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .stats-table th:nth-child(n+3) { text-align: center; }
+    .stats-table th.sorted { color: var(--green); }
+
+    .stats-table td {
+      padding: 0.7rem 0.5rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+
+    .stats-table td:nth-child(n+3) {
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+
+    .stats-table tr:last-child td { border-bottom: none; }
+
+    /* ── Game history ── */
+    .game-card {
+      cursor: pointer;
+    }
+
+    .game-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.25rem;
+    }
+
+    .game-card-opponent { font-weight: 700; font-size: 1rem; }
+
+    .game-card-score {
+      font-weight: 800;
+      font-size: 1.1rem;
+      color: var(--green);
+    }
+
+    .game-card-date {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .game-card-stats {
+      display: flex;
+      gap: 1rem;
+      margin-top: 0.5rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .game-detail-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: none;
+      border: none;
+      color: var(--green);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+      margin-bottom: 1rem;
+      font-family: inherit;
+    }
+
+    /* ── Skip assist ── */
+    .skip-assist {
+      text-align: center;
+      margin-bottom: 0.5rem;
+    }
+
+    /* ── Category badge ── */
+    .category-badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-left: 0.4rem;
+      vertical-align: middle;
+    }
+
+    /* ── Filter pills ── */
+    .filter-row {
+      display: flex;
+      gap: 0.4rem;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 0.75rem;
+      margin-bottom: 0.25rem;
+      scrollbar-width: none;
+    }
+
+    .filter-row::-webkit-scrollbar { display: none; }
+
+    .filter-pill {
+      flex-shrink: 0;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+
+    .filter-pill.active {
+      background: var(--green-dim);
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    /* ── Settings items ── */
+    .settings-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .settings-item:last-child { border-bottom: none; }
+
+    .settings-item-left {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex: 1;
+      cursor: pointer;
+    }
+
+    .settings-item-emoji {
+      font-size: 1.2rem;
+      width: 28px;
+      text-align: center;
+    }
+
+    .settings-item-name {
+      font-weight: 600;
+      font-size: 0.92rem;
+    }
+
+    .settings-item-actions {
+      display: flex;
+      gap: 0.3rem;
+    }
+
+    .form-group {
+      margin-bottom: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Tab Bar ── -->
+<div class="tab-bar">
+  <button class="tab active" data-view="game" onclick="switchView('game')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+    Game
+  </button>
+  <button class="tab" data-view="history" onclick="switchView('history')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    Games
+  </button>
+  <button class="tab" data-view="stats" onclick="switchView('stats')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    Stats
+  </button>
+  <button class="tab" data-view="roster" onclick="switchView('roster')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    Roster
+  </button>
+  <button class="tab" data-view="settings" onclick="switchView('settings')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    More
+  </button>
+</div>
+
+<!-- ── Game View ── -->
+<div class="view active" id="view-game"></div>
+
+<!-- ── History View ── -->
+<div class="view" id="view-history"></div>
+
+<!-- ── Stats View ── -->
+<div class="view" id="view-stats"></div>
+
+<!-- ── Roster View ── -->
+<div class="view" id="view-roster"></div>
+
+<!-- ── Settings View ── -->
+<div class="view" id="view-settings"></div>
+
+<!-- ── Modal ── -->
+<div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<script>
+// ── Supabase client ──
+const SUPABASE_URL = 'https://thzekzodeuizscohwirj.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_5Oi0WQ_pKrGbCVVo0zXfTw_BMvz-4oF';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── Data layer ──
+const STORAGE_KEY = 'soccer-stats';
+
+function loadDataLocal() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  let d;
+  if (raw) {
+    d = JSON.parse(raw);
+  } else {
+    d = { players: [], games: [], categories: [], activeGameId: null };
+  }
+  if (!d.categories) d.categories = [];
+  d.players.forEach(p => { if (p.photo === undefined) p.photo = null; });
+  d.games.forEach(g => {
+    if (g.categoryId === undefined) g.categoryId = null;
+    g.opponentGoals = g.opponentGoals || 0;
+  });
+  return d;
+}
+
+function saveDataLocal(d) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+}
+
+async function loadDataFromSupabase() {
+  const [playersRes, gamesRes, categoriesRes, stateRes] = await Promise.all([
+    sb.from('players').select('*'),
+    sb.from('games').select('*'),
+    sb.from('categories').select('*'),
+    sb.from('app_state').select('*').eq('id', 1).single()
+  ]);
+
+  if (playersRes.error || gamesRes.error || categoriesRes.error) {
+    console.warn('Supabase load failed, falling back to localStorage');
+    return null;
+  }
+
+  const players = (playersRes.data || []).map(p => ({
+    id: p.id, name: p.name, number: p.number, photo: p.photo
+  }));
+
+  const games = (gamesRes.data || []).map(g => ({
+    id: g.id, opponent: g.opponent, date: g.date,
+    finished: g.finished, categoryId: g.category_id,
+    opponentGoals: g.opponent_goals || 0,
+    events: g.events || []
+  }));
+
+  const categories = (categoriesRes.data || []).map(c => ({
+    id: c.id, name: c.name, emoji: c.emoji
+  }));
+
+  const activeGameId = stateRes.data ? stateRes.data.active_game_id : null;
+
+  return { players, games, categories, activeGameId };
+}
+
+function saveData(d) {
+  // Sync write to localStorage (immediate cache)
+  saveDataLocal(d);
+  // Async write to Supabase (fire-and-forget)
+  syncToSupabase(d);
+}
+
+let syncInFlight = false;
+let syncQueued = false;
+let lastSyncData = null;
+
+async function syncToSupabase(d) {
+  lastSyncData = d;
+  if (syncInFlight) {
+    syncQueued = true;
+    return;
+  }
+  syncInFlight = true;
+
+  try {
+    const players = d.players.map(p => ({
+      id: p.id, name: p.name, number: p.number, photo: p.photo
+    }));
+    const games = d.games.map(g => ({
+      id: g.id, opponent: g.opponent, date: g.date,
+      finished: g.finished, category_id: g.categoryId,
+      opponent_goals: g.opponentGoals || 0,
+      events: g.events || []
+    }));
+    const categories = d.categories.map(c => ({
+      id: c.id, name: c.name, emoji: c.emoji
+    }));
+
+    await Promise.all([
+      sb.from('players').upsert(players, { onConflict: 'id' }),
+      sb.from('games').upsert(games, { onConflict: 'id' }),
+      sb.from('categories').upsert(categories, { onConflict: 'id' }),
+      sb.from('app_state').upsert({ id: 1, active_game_id: d.activeGameId }, { onConflict: 'id' })
+    ]);
+
+    // Handle deletions: remove rows that are no longer in the data
+    const playerIds = d.players.map(p => p.id);
+    const gameIds = d.games.map(g => g.id);
+    const catIds = d.categories.map(c => c.id);
+
+    const deletes = [];
+    if (playerIds.length > 0) {
+      deletes.push(sb.from('players').delete().not('id', 'in', '(' + playerIds.join(',') + ')'));
+    } else {
+      deletes.push(sb.from('players').delete().neq('id', ''));
+    }
+    if (gameIds.length > 0) {
+      deletes.push(sb.from('games').delete().not('id', 'in', '(' + gameIds.join(',') + ')'));
+    } else {
+      deletes.push(sb.from('games').delete().neq('id', ''));
+    }
+    if (catIds.length > 0) {
+      deletes.push(sb.from('categories').delete().not('id', 'in', '(' + catIds.join(',') + ')'));
+    } else {
+      deletes.push(sb.from('categories').delete().neq('id', ''));
+    }
+    await Promise.all(deletes);
+
+  } catch (err) {
+    console.warn('Supabase sync error:', err);
+  } finally {
+    syncInFlight = false;
+    if (syncQueued) {
+      syncQueued = false;
+      syncToSupabase(lastSyncData);
+    }
+  }
+}
+
+let data = loadDataLocal();
+let selectionState = null;
+let sortCol = 'goals';
+let sortDir = -1;
+let viewingGameId = null;
+let statsCategoryFilter = null;
+
+// ── Navigation ──
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelector(`.tab[data-view="${name}"]`).classList.add('active');
+  viewingGameId = null;
+  selectionState = null;
+  render();
+}
+
+function openModal(html) {
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+
+// ── Helpers ──
+function getPlayer(id) {
+  return data.players.find(p => p.id === id);
+}
+
+function playerLabel(id) {
+  if (id === OWN_GOAL_ID) return 'Own Goal';
+  if (id === PENALTY_KICK_ID) return 'Penalty Kick';
+  if (id === FREE_KICK_ID) return 'Free Kick';
+  const p = getPlayer(id);
+  if (!p) return 'Unknown';
+  return p.number ? `#${p.number} ${p.name}` : p.name;
+}
+
+function playerShort(id) {
+  if (id === OWN_GOAL_ID) return 'OG';
+  const p = getPlayer(id);
+  if (!p) return '?';
+  return p.name.split(' ')[0];
+}
+
+function formatDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+const OWN_GOAL_ID = '__own_goal__';
+const PENALTY_KICK_ID = '__penalty_kick__';
+const FREE_KICK_ID = '__free_kick__';
+
+function sortedPlayers() {
+  return data.players.slice().sort((a, b) => {
+    const an = parseInt(a.number) || Infinity;
+    const bn = parseInt(b.number) || Infinity;
+    return an - bn;
+  });
+}
+
+function getInitials(name) {
+  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+}
+
+function playerPhotoHTML(player, size) {
+  if (player.photo) {
+    return `<img src="${player.photo}" class="${size === 80 ? 'profile-photo' : 'roster-photo'}" alt="${player.name}" style="width:${size}px;height:${size}px;">`;
+  }
+  const cls = size === 80 ? 'profile-initials' : 'roster-initials';
+  return `<div class="${cls}" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.3)}px">${getInitials(player.name)}</div>`;
+}
+
+function formatScore(game) {
+  return `${game.events.length} - ${game.opponentGoals}`;
+}
+
+function incrementOpponentGoals(delta) {
+  const game = getActiveGame();
+  if (!game) return;
+  game.opponentGoals = Math.max(0, game.opponentGoals + delta);
+  saveData(data);
+  render();
+}
+
+function getPlayerStats(playerId, categoryId) {
+  const finishedGames = data.games.filter(g => {
+    if (!g.finished) return false;
+    if (categoryId !== undefined && categoryId !== null) return g.categoryId === categoryId;
+    return true;
+  });
+  let goals = 0, assists = 0, games = 0;
+  finishedGames.forEach(g => {
+    let appeared = false;
+    g.events.forEach(ev => {
+      if (ev.scorerId === playerId) { goals++; appeared = true; }
+      if (ev.assistId === playerId) { assists++; appeared = true; }
+    });
+    if (appeared) games++;
+  });
+  return { goals, assists, games };
+}
+
+function getCategoryById(id) {
+  return data.categories.find(c => c.id === id);
+}
+
+function resizeAndStorePhoto(playerId, file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 200;
+      canvas.height = 200;
+      const ctx = canvas.getContext('2d');
+      // Crop to square center
+      const minDim = Math.min(img.width, img.height);
+      const sx = (img.width - minDim) / 2;
+      const sy = (img.height - minDim) / 2;
+      ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, 200, 200);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      const player = getPlayer(playerId);
+      if (player) {
+        player.photo = dataUrl;
+        saveData(data);
+        // Re-render the profile modal if open
+        openPlayerProfile(playerId);
+      }
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Roster ──
+function addPlayer() {
+  const nameEl = document.getElementById('new-player-name');
+  const numEl = document.getElementById('new-player-number');
+  const name = nameEl.value.trim();
+  const number = numEl.value.trim();
+  if (!name) return;
+  data.players.push({ id: Date.now().toString(), name, number, photo: null });
+  saveData(data);
+  nameEl.value = '';
+  numEl.value = '';
+  render();
+}
+
+function removePlayer(id) {
+  data.players = data.players.filter(p => p.id !== id);
+  saveData(data);
+  render();
+}
+
+// ── Player Profile ──
+function openPlayerProfile(playerId) {
+  const player = getPlayer(playerId);
+  if (!player) return;
+
+  const stats = getPlayerStats(playerId);
+  const finishedGames = data.games.filter(g => g.finished);
+
+  // Per-game log
+  const gameLog = finishedGames
+    .filter(g => g.events.some(ev => ev.scorerId === playerId || ev.assistId === playerId))
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .map(g => {
+      let gGoals = 0, gAssists = 0;
+      g.events.forEach(ev => {
+        if (ev.scorerId === playerId) gGoals++;
+        if (ev.assistId === playerId) gAssists++;
+      });
+      const cat = g.categoryId ? getCategoryById(g.categoryId) : null;
+      const catBadge = cat ? ` <span class="category-badge">${cat.emoji} ${cat.name}</span>` : '';
+      return `<div class="profile-game-entry">
+        <div>
+          <div class="pge-opp">vs ${g.opponent}${catBadge}</div>
+          <div class="pge-date">${formatDate(g.date)}</div>
+        </div>
+        <div class="pge-stats">${gGoals}G ${gAssists}A</div>
+      </div>`;
+    }).join('');
+
+  const photoEl = playerPhotoHTML(player, 80);
+
+  openModal(`
+    <h2>Player Profile</h2>
+    <div class="profile-photo-wrap" onclick="document.getElementById('profile-photo-input').click()">
+      ${photoEl}
+    </div>
+    <div class="profile-photo-label">Tap photo to change</div>
+    <input type="file" id="profile-photo-input" accept="image/*" style="display:none" onchange="resizeAndStorePhoto('${playerId}', this.files[0])">
+    <div class="form-group">
+      <label>Name</label>
+      <input class="input" id="profile-name" value="${player.name}">
+    </div>
+    <div class="form-group">
+      <label>Number</label>
+      <input class="input" id="profile-number" value="${player.number || ''}" style="max-width:100px">
+    </div>
+    <div class="profile-stats-row">
+      <div class="profile-stat"><div class="ps-val">${stats.goals}</div><div class="ps-label">Goals</div></div>
+      <div class="profile-stat"><div class="ps-val">${stats.assists}</div><div class="ps-label">Assists</div></div>
+    </div>
+    ${gameLog ? `<div class="card"><label>Game Log</label><div class="profile-game-log">${gameLog}</div></div>` : ''}
+    <div class="modal-actions">
+      <button class="btn btn-danger btn-sm" onclick="confirmDeletePlayer('${playerId}')">Delete</button>
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="savePlayerProfile('${playerId}')">Save</button>
+    </div>
+  `);
+}
+
+function savePlayerProfile(playerId) {
+  const player = getPlayer(playerId);
+  if (!player) return;
+  const name = document.getElementById('profile-name').value.trim();
+  const number = document.getElementById('profile-number').value.trim();
+  if (!name) return;
+  player.name = name;
+  player.number = number;
+  saveData(data);
+  closeModal();
+  render();
+}
+
+function confirmDeletePlayer(playerId) {
+  const player = getPlayer(playerId);
+  if (!player) return;
+  openModal(`
+    <h2>Delete ${player.name}?</h2>
+    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:0.5rem">This player will be removed from the roster. Their stats in past games will still show but labeled as "Unknown".</p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="openPlayerProfile('${playerId}')">Cancel</button>
+      <button class="btn btn-danger" onclick="removePlayer('${playerId}');closeModal()">Delete</button>
+    </div>
+  `);
+}
+
+// ── Game management ──
+function startGame() {
+  const opponent = document.getElementById('game-opponent').value.trim() || 'Unknown';
+  const catSelect = document.getElementById('game-category');
+  const categoryId = catSelect ? (catSelect.value || null) : null;
+  const game = {
+    id: Date.now().toString(),
+    opponent,
+    date: new Date().toISOString(),
+    events: [],
+    finished: false,
+    categoryId,
+    opponentGoals: 0
+  };
+  data.games.push(game);
+  data.activeGameId = game.id;
+  saveData(data);
+  closeModal();
+  selectionState = null;
+  render();
+}
+
+function endGame() {
+  const game = getActiveGame();
+  if (!game) return;
+  game.finished = true;
+  data.activeGameId = null;
+  saveData(data);
+  selectionState = null;
+  render();
+}
+
+function getActiveGame() {
+  if (!data.activeGameId) return null;
+  return data.games.find(g => g.id === data.activeGameId) || null;
+}
+
+function deleteGame(id) {
+  if (data.activeGameId === id) data.activeGameId = null;
+  data.games = data.games.filter(g => g.id !== id);
+  saveData(data);
+  selectionState = null;
+  viewingGameId = null;
+  render();
+}
+
+// ── Goal recording ──
+function selectGoalScorer(playerId, gameId) {
+  if (playerId === OWN_GOAL_ID) {
+    recordGoal(OWN_GOAL_ID, null, gameId || null);
+    return;
+  }
+  selectionState = { type: 'assist', goalScorerId: playerId, gameId: gameId || null };
+  render();
+}
+
+function selectAssist(playerId) {
+  if (!selectionState || selectionState.type !== 'assist') return;
+  recordGoal(selectionState.goalScorerId, playerId, selectionState.gameId);
+}
+
+function skipAssist() {
+  if (!selectionState || selectionState.type !== 'assist') return;
+  recordGoal(selectionState.goalScorerId, null, selectionState.gameId);
+}
+
+function recordAssistType(typeId) {
+  if (!selectionState || selectionState.type !== 'assist') return;
+  recordGoal(selectionState.goalScorerId, typeId, selectionState.gameId);
+}
+
+function recordGoal(scorerId, assistId, gameId) {
+  const game = gameId ? data.games.find(g => g.id === gameId) : getActiveGame();
+  if (!game) return;
+  game.events.push({
+    id: Date.now().toString(),
+    scorerId,
+    assistId,
+    time: new Date().toISOString()
+  });
+  saveData(data);
+  selectionState = null;
+  render();
+}
+
+function startAddGoalToGame(gameId) {
+  selectionState = { type: 'scorer', gameId };
+  render();
+}
+
+function removeGoal(gameId, eventId) {
+  const game = data.games.find(g => g.id === gameId);
+  if (!game) return;
+  game.events = game.events.filter(e => e.id !== eventId);
+  saveData(data);
+  render();
+}
+
+function cancelSelection() {
+  selectionState = null;
+  render();
+}
+
+// ── Category CRUD ──
+function addCategory() {
+  const nameEl = document.getElementById('cat-name');
+  const emojiEl = document.getElementById('cat-emoji');
+  const name = nameEl.value.trim();
+  const emoji = emojiEl.value.trim() || '📁';
+  if (!name) return;
+  data.categories.push({ id: Date.now().toString(), name, emoji });
+  saveData(data);
+  closeModal();
+  render();
+}
+
+function updateCategory(catId) {
+  const cat = getCategoryById(catId);
+  if (!cat) return;
+  const name = document.getElementById('cat-name').value.trim();
+  const emoji = document.getElementById('cat-emoji').value.trim() || '📁';
+  if (!name) return;
+  cat.name = name;
+  cat.emoji = emoji;
+  saveData(data);
+  closeModal();
+  render();
+}
+
+function deleteCategory(catId) {
+  data.categories = data.categories.filter(c => c.id !== catId);
+  // Clear categoryId on orphaned games
+  data.games.forEach(g => { if (g.categoryId === catId) g.categoryId = null; });
+  saveData(data);
+  closeModal();
+  render();
+}
+
+function openAddCategoryModal() {
+  openModal(`
+    <h2>New Category</h2>
+    <div class="form-group">
+      <label>Emoji</label>
+      <input class="input" id="cat-emoji" placeholder="📁" style="max-width:80px" value="⚽">
+    </div>
+    <div class="form-group">
+      <label>Name</label>
+      <input class="input" id="cat-name" placeholder="e.g. Tournament" onkeydown="if(event.key==='Enter')addCategory()">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="addCategory()">Add</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('cat-name')?.focus(), 100);
+}
+
+function openEditCategoryModal(catId) {
+  const cat = getCategoryById(catId);
+  if (!cat) return;
+  openModal(`
+    <h2>Edit Category</h2>
+    <div class="form-group">
+      <label>Emoji</label>
+      <input class="input" id="cat-emoji" value="${cat.emoji}" style="max-width:80px">
+    </div>
+    <div class="form-group">
+      <label>Name</label>
+      <input class="input" id="cat-name" value="${cat.name}">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger btn-sm" onclick="if(confirm('Delete this category?'))deleteCategory('${catId}')">Delete</button>
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="updateCategory('${catId}')">Save</button>
+    </div>
+  `);
+}
+
+// ── Stats category filter ──
+function filterStatsByCategory(catId) {
+  statsCategoryFilter = catId;
+  render();
+}
+
+// ── Render ──
+function render() {
+  renderGame();
+  renderRoster();
+  renderHistory();
+  renderStats();
+  renderSettings();
+}
+
+function renderGame() {
+  const el = document.getElementById('view-game');
+  const game = getActiveGame();
+
+  if (!game) {
+    el.innerHTML = `
+      <div class="view-header"><h1>Game</h1></div>
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <h3>No active game</h3>
+        <p>${data.players.length === 0 ? 'Add players to your roster first, then start a game.' : 'Start a new game to begin tracking stats.'}</p>
+        ${data.players.length > 0 ? `<button class="btn" onclick="openNewGameModal()">Start Game</button>` : `<button class="btn" onclick="switchView('roster')">Set Up Roster</button>`}
+      </div>`;
+    return;
+  }
+
+  const goals = game.events.length;
+  const isSelecting = selectionState !== null;
+  const isAssistStep = selectionState?.type === 'assist';
+  const cat = game.categoryId ? getCategoryById(game.categoryId) : null;
+
+  let prompt = '';
+  if (!isSelecting) {
+    prompt = `<div class="prompt-text">Tap the player who scored</div>`;
+  } else if (isAssistStep) {
+    const scorer = playerShort(selectionState.goalScorerId);
+    prompt = `<div class="prompt-text" style="background:var(--blue-dim);color:var(--blue)">Goal by ${scorer} — tap the assister</div>`;
+  }
+
+  const playerBtns = sortedPlayers().map(p => {
+    let cls = 'player-btn';
+    if (!isSelecting) cls += ' selecting-goal';
+    if (isAssistStep && p.id !== selectionState.goalScorerId) cls += ' selecting-assist';
+    if (isAssistStep && p.id === selectionState.goalScorerId) cls += '" style="opacity:0.3;pointer-events:none';
+
+    const onclick = !isSelecting
+      ? `selectGoalScorer('${p.id}')`
+      : (isAssistStep && p.id !== selectionState.goalScorerId ? `selectAssist('${p.id}')` : '');
+
+    return `<button class="${cls}" onclick="${onclick}">
+      <span class="p-number">${p.number || '–'}</span>
+      <span class="p-name">${p.name}</span>
+    </button>`;
+  }).join('');
+
+  const ownGoalBtn = !isSelecting
+    ? `<button class="player-btn selecting-goal" onclick="selectGoalScorer('${OWN_GOAL_ID}')" style="border-color:var(--yellow);background:var(--yellow-dim)">
+        <span class="p-number">OG</span>
+        <span class="p-name">Own Goal</span>
+      </button>`
+    : '';
+
+  const goalLog = game.events.slice().reverse().map((ev, i) => `
+    <div class="goal-entry">
+      <div class="goal-icon">⚽</div>
+      <div class="goal-info">
+        <div class="goal-scorer">${playerLabel(ev.scorerId)}</div>
+        ${ev.assistId === PENALTY_KICK_ID || ev.assistId === FREE_KICK_ID ? `<div class="goal-assist">${playerLabel(ev.assistId)}</div>` : ev.assistId ? `<div class="goal-assist">Assist: ${playerLabel(ev.assistId)}</div>` : '<div class="goal-assist">Unassisted</div>'}
+      </div>
+      <button class="goal-delete" onclick="removeGoal('${game.id}','${ev.id}')">✕</button>
+    </div>
+  `).join('');
+
+  el.innerHTML = `
+    <div class="view-header">
+      <h1>Live Game</h1>
+      <button class="btn btn-sm btn-danger" onclick="confirmEndGame()">End Game</button>
+    </div>
+    <div class="game-status">
+      <div class="game-opponent">vs ${game.opponent}${cat ? ` <span class="category-badge">${cat.emoji} ${cat.name}</span>` : ''}</div>
+      <div class="game-score">${formatScore(game)}</div>
+      <div class="game-clock">${formatDate(game.date)}</div>
+      <div style="margin-top:0.5rem;display:flex;align-items:center;justify-content:center;gap:0.75rem">
+        <span style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Opponent Goals</span>
+        <button class="btn btn-sm btn-outline" onclick="incrementOpponentGoals(-1)" style="padding:0.3rem 0.6rem;font-size:1rem;line-height:1">−</button>
+        <span style="font-weight:700;min-width:1.5rem;text-align:center">${game.opponentGoals}</span>
+        <button class="btn btn-sm btn-outline" onclick="incrementOpponentGoals(1)" style="padding:0.3rem 0.6rem;font-size:1rem;line-height:1">+</button>
+      </div>
+    </div>
+    ${prompt}
+    <div class="player-grid">${playerBtns}${ownGoalBtn}</div>
+    ${isAssistStep ? `<div class="skip-assist"><button class="btn btn-sm btn-outline" onclick="skipAssist()">No assist</button> <button class="btn btn-sm btn-outline" onclick="recordAssistType('${PENALTY_KICK_ID}')">Penalty Kick</button> <button class="btn btn-sm btn-outline" onclick="recordAssistType('${FREE_KICK_ID}')">Free Kick</button> <button class="btn btn-sm btn-outline" onclick="cancelSelection()">Cancel</button></div>` : ''}
+    ${game.events.length > 0 ? `<div class="card goal-log"><label>Goals this game</label>${goalLog}</div>` : ''}
+  `;
+}
+
+function renderRoster() {
+  const el = document.getElementById('view-roster');
+
+  const cards = sortedPlayers().map(p => {
+    const s = getPlayerStats(p.id);
+    const statsLine = (s.goals + s.assists > 0) ? `${s.goals}G ${s.assists}A` : '';
+    const photo = playerPhotoHTML(p, 52);
+    return `<div class="roster-card" onclick="openPlayerProfile('${p.id}')">
+      ${photo}
+      <span class="rc-number">${p.number ? '#' + p.number : '–'}</span>
+      <span class="rc-name">${p.name}</span>
+      ${statsLine ? `<span class="rc-stats">${statsLine}</span>` : ''}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="view-header"><h1>Roster</h1></div>
+    <div class="card">
+      <label>Add Player</label>
+      <div class="form-row">
+        <input class="input" id="new-player-name" placeholder="Name" onkeydown="if(event.key==='Enter')addPlayer()">
+        <input class="input" id="new-player-number" placeholder="#" style="max-width:60px" onkeydown="if(event.key==='Enter')addPlayer()">
+        <button class="btn btn-sm" onclick="addPlayer()">Add</button>
+      </div>
+    </div>
+    ${data.players.length > 0 ? `<div class="roster-grid">${cards}</div>` : '<div class="empty-state"><p>No players yet. Add your team above.</p></div>'}
+  `;
+}
+
+function renderHistory() {
+  const el = document.getElementById('view-history');
+
+  if (viewingGameId) {
+    renderGameDetail(el);
+    return;
+  }
+
+  const finished = data.games.filter(g => g.finished).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (finished.length === 0) {
+    el.innerHTML = `
+      <div class="view-header"><h1>Games</h1><button class="btn btn-sm" onclick="openAddHistoricalGameModal()">+ Add Game</button></div>
+      <div class="empty-state">
+        <p>No completed games yet.</p>
+      </div>`;
+    return;
+  }
+
+  const gameCards = finished.map(g => {
+    const scorers = {};
+    g.events.forEach(ev => {
+      if (ev.scorerId === OWN_GOAL_ID || !getPlayer(ev.scorerId)) return;
+      const name = playerShort(ev.scorerId);
+      scorers[name] = (scorers[name] || 0) + 1;
+    });
+    const topScorers = Object.entries(scorers).sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n} (${c})`).join(', ');
+    const cat = g.categoryId ? getCategoryById(g.categoryId) : null;
+    const catBadge = cat ? `<span class="category-badge">${cat.emoji} ${cat.name}</span>` : '';
+
+    return `<div class="card game-card" onclick="viewGame('${g.id}')">
+      <div class="game-card-header">
+        <span class="game-card-opponent">vs ${g.opponent} ${catBadge}</span>
+        <span class="game-card-score" style="color:${g.events.length > g.opponentGoals ? 'var(--green)' : g.events.length < g.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(g)}</span>
+      </div>
+      <div class="game-card-date">${formatDate(g.date)}</div>
+      ${topScorers ? `<div class="game-card-stats">${topScorers}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="view-header"><h1>Games</h1><button class="btn btn-sm" onclick="openAddHistoricalGameModal()">+ Add Game</button></div>
+    ${gameCards}
+  `;
+}
+
+function viewGame(id) {
+  viewingGameId = id;
+  render();
+}
+
+function renderGameDetail(el) {
+  const game = data.games.find(g => g.id === viewingGameId);
+  if (!game) { viewingGameId = null; render(); return; }
+
+  const stats = {};
+  game.events.forEach(ev => {
+    if (ev.scorerId !== OWN_GOAL_ID) {
+      if (!stats[ev.scorerId]) stats[ev.scorerId] = { goals: 0, assists: 0 };
+      stats[ev.scorerId].goals++;
+    }
+    if (ev.assistId && ev.assistId !== PENALTY_KICK_ID && ev.assistId !== FREE_KICK_ID) {
+      if (!stats[ev.assistId]) stats[ev.assistId] = { goals: 0, assists: 0 };
+      stats[ev.assistId].assists++;
+    }
+  });
+
+  const rows = Object.entries(stats)
+    .sort((a, b) => (b[1].goals + b[1].assists) - (a[1].goals + a[1].assists))
+    .map(([id, s]) => `<tr><td>${playerLabel(id)}</td><td>${s.goals}</td><td>${s.assists}</td><td>${s.goals + s.assists}</td></tr>`)
+    .join('');
+
+  const goalLog = game.events.map((ev, i) => `
+    <div class="goal-entry">
+      <div class="goal-icon">${i + 1}</div>
+      <div class="goal-info">
+        <div class="goal-scorer">${playerLabel(ev.scorerId)}</div>
+        ${ev.assistId === PENALTY_KICK_ID || ev.assistId === FREE_KICK_ID ? `<div class="goal-assist">${playerLabel(ev.assistId)}</div>` : ev.assistId ? `<div class="goal-assist">Assist: ${playerLabel(ev.assistId)}</div>` : '<div class="goal-assist">Unassisted</div>'}
+      </div>
+      <button class="goal-delete" onclick="removeGoal('${game.id}','${ev.id}')">✕</button>
+    </div>
+  `).join('');
+
+  const cat = game.categoryId ? getCategoryById(game.categoryId) : null;
+  const catBadge = cat ? ` <span class="category-badge">${cat.emoji} ${cat.name}</span>` : '';
+
+  // Goal selection UI for finished games
+  const isSelectingForThis = selectionState && selectionState.gameId === game.id;
+  const isAssistStep = isSelectingForThis && selectionState.type === 'assist';
+  let selectionUI = '';
+
+  if (isSelectingForThis) {
+    let prompt = '';
+    if (isAssistStep) {
+      const scorer = playerShort(selectionState.goalScorerId);
+      prompt = `<div class="prompt-text" style="background:var(--blue-dim);color:var(--blue)">Goal by ${scorer} — tap the assister</div>`;
+    } else {
+      prompt = `<div class="prompt-text">Tap the player who scored</div>`;
+    }
+
+    const playerBtns = sortedPlayers().map(p => {
+      let cls = 'player-btn';
+      if (!isAssistStep) cls += ' selecting-goal';
+      if (isAssistStep && p.id !== selectionState.goalScorerId) cls += ' selecting-assist';
+      if (isAssistStep && p.id === selectionState.goalScorerId) cls += '" style="opacity:0.3;pointer-events:none';
+
+      const onclick = !isAssistStep
+        ? `selectGoalScorer('${p.id}','${game.id}')`
+        : (p.id !== selectionState.goalScorerId ? `selectAssist('${p.id}')` : '');
+
+      return `<button class="${cls}" onclick="${onclick}">
+        <span class="p-number">${p.number || '–'}</span>
+        <span class="p-name">${p.name}</span>
+      </button>`;
+    }).join('');
+
+    const ownGoalBtn = !isAssistStep
+      ? `<button class="player-btn selecting-goal" onclick="selectGoalScorer('${OWN_GOAL_ID}','${game.id}')" style="border-color:var(--yellow);background:var(--yellow-dim)">
+          <span class="p-number">OG</span>
+          <span class="p-name">Own Goal</span>
+        </button>`
+      : '';
+
+    selectionUI = `
+      ${prompt}
+      <div class="player-grid">${playerBtns}${ownGoalBtn}</div>
+      ${isAssistStep ? `<div class="skip-assist"><button class="btn btn-sm btn-outline" onclick="skipAssist()">No assist</button> <button class="btn btn-sm btn-outline" onclick="recordAssistType('${PENALTY_KICK_ID}')">Penalty Kick</button> <button class="btn btn-sm btn-outline" onclick="recordAssistType('${FREE_KICK_ID}')">Free Kick</button> <button class="btn btn-sm btn-outline" onclick="cancelSelection()">Cancel</button></div>` : `<div class="skip-assist"><button class="btn btn-sm btn-outline" onclick="cancelSelection()">Cancel</button></div>`}
+    `;
+  }
+
+  el.innerHTML = `
+    <button class="game-detail-back" onclick="viewingGameId=null;selectionState=null;render()">← All Games</button>
+    <div class="view-header">
+      <h1>vs ${game.opponent}</h1>
+      <span class="game-card-score" style="font-size:1.5rem">${formatScore(game)}</span>
+    </div>
+    <div style="font-size:0.85rem;color:var(--muted);margin-bottom:1rem">${formatDate(game.date)}${catBadge}</div>
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
+      <button class="btn btn-sm btn-blue" onclick="openEditGameModal('${game.id}')">Edit Game</button>
+      <button class="btn btn-sm${isSelectingForThis ? ' btn-outline' : ''}" onclick="${isSelectingForThis ? 'cancelSelection()' : `startAddGoalToGame('${game.id}')`}">${isSelectingForThis ? 'Cancel Add' : 'Add Goal'}</button>
+      <button class="btn btn-sm btn-danger" onclick="if(confirm('Delete this game?'))deleteGame('${game.id}')">Delete</button>
+    </div>
+    ${selectionUI}
+    ${rows ? `<div class="card"><label>Player Stats</label><table class="stats-table"><thead><tr><th>Player</th><th>G</th><th>A</th><th>Tot</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+    ${goalLog ? `<div class="card"><label>Goal Log</label>${goalLog}</div>` : '<div class="empty-state"><p>No goals recorded.</p></div>'}
+  `;
+}
+
+function renderStats() {
+  const el = document.getElementById('view-stats');
+  let finishedGames = data.games.filter(g => g.finished);
+
+  // Filter pills
+  let filterHTML = '';
+  if (data.categories.length > 0) {
+    const pills = [`<button class="filter-pill${statsCategoryFilter === null ? ' active' : ''}" onclick="filterStatsByCategory(null)">All</button>`];
+    data.categories.forEach(c => {
+      pills.push(`<button class="filter-pill${statsCategoryFilter === c.id ? ' active' : ''}" onclick="filterStatsByCategory('${c.id}')">${c.emoji} ${c.name}</button>`);
+    });
+    filterHTML = `<div class="filter-row">${pills.join('')}</div>`;
+  }
+
+  // Apply filter
+  if (statsCategoryFilter !== null) {
+    finishedGames = finishedGames.filter(g => g.categoryId === statsCategoryFilter);
+  }
+
+  if (data.games.filter(g => g.finished).length === 0) {
+    el.innerHTML = `
+      <div class="view-header"><h1>Season Stats</h1></div>
+      ${filterHTML}
+      <div class="empty-state"><p>Complete a game to see season stats.</p></div>`;
+    return;
+  }
+
+  const stats = {};
+  data.players.forEach(p => { stats[p.id] = { goals: 0, assists: 0, games: 0 }; });
+
+  finishedGames.forEach(g => {
+    const appeared = new Set();
+    g.events.forEach(ev => {
+      if (ev.scorerId === OWN_GOAL_ID) return;
+      if (!stats[ev.scorerId]) stats[ev.scorerId] = { goals: 0, assists: 0, games: 0 };
+      stats[ev.scorerId].goals++;
+      appeared.add(ev.scorerId);
+      if (ev.assistId && ev.assistId !== PENALTY_KICK_ID && ev.assistId !== FREE_KICK_ID) {
+        if (!stats[ev.assistId]) stats[ev.assistId] = { goals: 0, assists: 0, games: 0 };
+        stats[ev.assistId].assists++;
+        appeared.add(ev.assistId);
+      }
+    });
+    appeared.forEach(id => { if (stats[id]) stats[id].games++; });
+  });
+
+  const rows = Object.entries(stats)
+    .filter(([, s]) => s.goals + s.assists > 0)
+    .sort((a, b) => {
+      let av, bv;
+      if (sortCol === 'total') { av = a[1].goals + a[1].assists; bv = b[1].goals + b[1].assists; }
+      else { av = a[1][sortCol]; bv = b[1][sortCol]; }
+      return (bv - av) * (sortDir === -1 ? 1 : -1);
+    })
+    .map(([id, s]) => { const p = getPlayer(id); return `<tr style="cursor:pointer" onclick="openPlayerProfile('${id}')"><td style="font-weight:800">${p ? p.number || '–' : '–'}</td><td>${p ? p.name : 'Unknown'}</td><td>${s.goals}</td><td>${s.assists}</td><td>${s.goals + s.assists}</td></tr>`; })
+    .join('');
+
+  function sortIcon(col) { return sortCol === col ? (sortDir === -1 ? ' ▼' : ' ▲') : ''; }
+  function sortClass(col) { return sortCol === col ? 'sorted' : ''; }
+
+  el.innerHTML = `
+    <div class="view-header"><h1>Season Stats</h1></div>
+    ${filterHTML}
+${(() => { let w=0,l=0,t=0,gf=0,ga=0; finishedGames.forEach(g => { const ours=g.events.length, theirs=g.opponentGoals; gf+=ours; ga+=theirs; if(ours>theirs)w++; else if(ours<theirs)l++; else t++; }); const gd=gf-ga; return `<div class="card" style="display:flex;justify-content:space-around;text-align:center;padding:0.75rem">
+      <div><div style="font-size:1.3rem;font-weight:800">${w}-${l}-${t}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">W-L-T</div></div>
+      <div><div style="font-size:1.3rem;font-weight:800">${gf}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GF</div></div>
+      <div><div style="font-size:1.3rem;font-weight:800">${ga}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GA</div></div>
+      <div><div style="font-size:1.3rem;font-weight:800;color:${gd>0?'var(--green)':gd<0?'var(--red)':'var(--text)'}">${gd>0?'+':''}${gd}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GD</div></div>
+    </div>`; })()}
+    ${rows ? `<div class="card"><table class="stats-table"><thead><tr>
+      <th>#</th>
+      <th>Player</th>
+      <th class="${sortClass('goals')}" onclick="setSort('goals')">G${sortIcon('goals')}</th>
+      <th class="${sortClass('assists')}" onclick="setSort('assists')">A${sortIcon('assists')}</th>
+      <th class="${sortClass('total')}" onclick="setSort('total')">Tot${sortIcon('total')}</th>
+    </tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty-state"><p>No goals recorded yet.</p></div>'}
+  `;
+}
+
+function setSort(col) {
+  if (sortCol === col) {
+    sortDir *= -1;
+  } else {
+    sortCol = col;
+    sortDir = -1;
+  }
+  render();
+}
+
+function renderSettings() {
+  const el = document.getElementById('view-settings');
+
+  const catItems = data.categories.map(c => `
+    <div class="settings-item">
+      <div class="settings-item-left" onclick="openEditCategoryModal('${c.id}')">
+        <span class="settings-item-emoji">${c.emoji}</span>
+        <span class="settings-item-name">${c.name}</span>
+      </div>
+    </div>
+  `).join('');
+
+  el.innerHTML = `
+    <div class="view-header"><h1>More</h1></div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+        <label style="margin-bottom:0">Game Categories</label>
+        <button class="btn btn-sm" onclick="openAddCategoryModal()">+ Add</button>
+      </div>
+      ${catItems || '<div style="color:var(--muted);font-size:0.85rem;padding:0.5rem 0">No categories yet. Add one to tag your games.</div>'}
+    </div>
+  `;
+}
+
+// ── Modals ──
+function openNewGameModal() {
+  const catOptions = data.categories.map(c => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
+  const catSelect = data.categories.length > 0
+    ? `<div class="form-group"><label>Category</label><select class="input" id="game-category"><option value="">None</option>${catOptions}</select></div>`
+    : '';
+
+  openModal(`
+    <h2>New Game</h2>
+    <div class="form-group">
+      <label>Opponent</label>
+      <input class="input" id="game-opponent" placeholder="e.g. Eagles" onkeydown="if(event.key==='Enter')startGame()">
+    </div>
+    ${catSelect}
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="startGame()">Start Game</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('game-opponent')?.focus(), 100);
+}
+
+function openEditGameModal(gameId) {
+  const game = data.games.find(g => g.id === gameId);
+  if (!game) return;
+  const dateVal = new Date(game.date).toISOString().split('T')[0];
+  const catOptions = data.categories.map(c =>
+    `<option value="${c.id}"${game.categoryId === c.id ? ' selected' : ''}>${c.emoji} ${c.name}</option>`
+  ).join('');
+  openModal(`
+    <h2>Edit Game</h2>
+    <div class="form-group">
+      <label>Opponent</label>
+      <input class="input" id="edit-game-opponent" value="${game.opponent}">
+    </div>
+    <div class="form-group">
+      <label>Date</label>
+      <input type="date" class="input" id="edit-game-date" value="${dateVal}">
+    </div>
+    <div class="form-group">
+      <label>Category</label>
+      <select class="input" id="edit-game-category">
+        <option value="">None</option>
+        ${catOptions}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Opponent Goals</label>
+      <input type="number" class="input" id="edit-game-opp-goals" value="${game.opponentGoals}" min="0" style="max-width:100px">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="saveGameEdits('${gameId}')">Save</button>
+    </div>
+  `);
+}
+
+function saveGameEdits(gameId) {
+  const game = data.games.find(g => g.id === gameId);
+  if (!game) return;
+  const opponent = document.getElementById('edit-game-opponent').value.trim() || 'Unknown';
+  const dateStr = document.getElementById('edit-game-date').value;
+  const categoryId = document.getElementById('edit-game-category').value || null;
+  const oppGoals = parseInt(document.getElementById('edit-game-opp-goals').value) || 0;
+  game.opponent = opponent;
+  if (dateStr) game.date = new Date(dateStr + 'T12:00:00').toISOString();
+  game.categoryId = categoryId;
+  game.opponentGoals = Math.max(0, oppGoals);
+  saveData(data);
+  closeModal();
+  render();
+}
+
+function openAddHistoricalGameModal() {
+  const today = new Date().toISOString().split('T')[0];
+  const catOptions = data.categories.map(c =>
+    `<option value="${c.id}">${c.emoji} ${c.name}</option>`
+  ).join('');
+  const catSelect = data.categories.length > 0
+    ? `<div class="form-group"><label>Category</label><select class="input" id="hist-game-category"><option value="">None</option>${catOptions}</select></div>`
+    : '';
+  openModal(`
+    <h2>Add Past Game</h2>
+    <div class="form-group">
+      <label>Opponent</label>
+      <input class="input" id="hist-game-opponent" placeholder="e.g. Eagles">
+    </div>
+    <div class="form-group">
+      <label>Date</label>
+      <input type="date" class="input" id="hist-game-date" value="${today}">
+    </div>
+    ${catSelect}
+    <div class="form-group">
+      <label>Opponent Goals</label>
+      <input type="number" class="input" id="hist-game-opp-goals" value="0" min="0" style="max-width:100px">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="createHistoricalGame()">Create</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('hist-game-opponent')?.focus(), 100);
+}
+
+function createHistoricalGame() {
+  const opponent = document.getElementById('hist-game-opponent').value.trim() || 'Unknown';
+  const dateStr = document.getElementById('hist-game-date').value;
+  const catEl = document.getElementById('hist-game-category');
+  const categoryId = catEl ? (catEl.value || null) : null;
+  const oppGoals = parseInt(document.getElementById('hist-game-opp-goals').value) || 0;
+  const game = {
+    id: Date.now().toString(),
+    opponent,
+    date: dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString(),
+    events: [],
+    finished: true,
+    categoryId,
+    opponentGoals: Math.max(0, oppGoals)
+  };
+  data.games.push(game);
+  saveData(data);
+  closeModal();
+  viewingGameId = game.id;
+  render();
+}
+
+function confirmEndGame() {
+  openModal(`
+    <h2>End Game?</h2>
+    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:0.5rem">This will save the game to your history. You can still edit it later.</p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Keep Playing</button>
+      <button class="btn btn-danger" onclick="endGame();closeModal()">End Game</button>
+    </div>
+  `);
+}
+
+// ── Init ──
+// Render immediately with localStorage data, then refresh from Supabase
+render();
+
+(async () => {
+  const remote = await loadDataFromSupabase();
+  if (remote) {
+    data = remote;
+    saveDataLocal(data); // Update local cache
+    render();
+  }
+})();
+</script>
+</body>
+</html>
