@@ -787,12 +787,12 @@ function loadDataLocal() {
   if (raw) {
     d = JSON.parse(raw);
   } else {
-    d = { players: [], games: [], categories: [], activeGameId: null };
+    d = { players: [], games: [], competitions: [], activeGameId: null };
   }
-  if (!d.categories) d.categories = [];
+  if (!d.competitions) d.competitions = [];
   d.players.forEach(p => { if (p.photo === undefined) p.photo = null; });
   d.games.forEach(g => {
-    if (g.categoryId === undefined) g.categoryId = null;
+    if (g.competitionId === undefined) g.competitionId = null;
     g.opponentGoals = g.opponentGoals || 0;
   });
   return d;
@@ -803,14 +803,14 @@ function saveDataLocal(d) {
 }
 
 async function loadDataFromSupabase() {
-  const [playersRes, gamesRes, categoriesRes, stateRes] = await Promise.all([
+  const [playersRes, gamesRes, competitionsRes, stateRes] = await Promise.all([
     sb.from('players').select('*'),
     sb.from('games').select('*'),
-    sb.from('categories').select('*'),
+    sb.from('competitions').select('*'),
     sb.from('app_state').select('*').eq('id', 1).single()
   ]);
 
-  if (playersRes.error || gamesRes.error || categoriesRes.error) {
+  if (playersRes.error || gamesRes.error || competitionsRes.error) {
     console.warn('Supabase load failed, falling back to localStorage');
     return null;
   }
@@ -821,18 +821,18 @@ async function loadDataFromSupabase() {
 
   const games = (gamesRes.data || []).map(g => ({
     id: g.id, opponent: g.opponent, date: g.date,
-    finished: g.finished, categoryId: g.category_id,
+    finished: g.finished, competitionId: g.competition_id,
     opponentGoals: g.opponent_goals || 0,
     events: g.events || []
   }));
 
-  const categories = (categoriesRes.data || []).map(c => ({
-    id: c.id, name: c.name, emoji: c.emoji
+  const competitions = (competitionsRes.data || []).map(c => ({
+    id: c.id, name: c.name, emoji: c.emoji, categoryType: c.category_type
   }));
 
   const activeGameId = stateRes.data ? stateRes.data.active_game_id : null;
 
-  return { players, games, categories, activeGameId };
+  return { players, games, competitions, activeGameId };
 }
 
 function saveData(d) {
@@ -863,25 +863,25 @@ async function syncToSupabase(d) {
     }));
     const games = d.games.map(g => ({
       id: g.id, opponent: g.opponent, date: g.date,
-      finished: g.finished, category_id: g.categoryId,
+      finished: g.finished, competition_id: g.competitionId,
       opponent_goals: g.opponentGoals || 0,
       events: g.events || []
     }));
-    const categories = d.categories.map(c => ({
-      id: c.id, name: c.name, emoji: c.emoji
+    const competitions = d.competitions.map(c => ({
+      id: c.id, name: c.name, emoji: c.emoji, category_type: c.categoryType
     }));
 
     await Promise.all([
       sb.from('players').upsert(players, { onConflict: 'id' }),
       sb.from('games').upsert(games, { onConflict: 'id' }),
-      sb.from('categories').upsert(categories, { onConflict: 'id' }),
+      sb.from('competitions').upsert(competitions, { onConflict: 'id' }),
       sb.from('app_state').upsert({ id: 1, active_game_id: d.activeGameId }, { onConflict: 'id' })
     ]);
 
     // Handle deletions: remove rows that are no longer in the data
     const playerIds = d.players.map(p => p.id);
     const gameIds = d.games.map(g => g.id);
-    const catIds = d.categories.map(c => c.id);
+    const compIds = d.competitions.map(c => c.id);
 
     const deletes = [];
     if (playerIds.length > 0) {
@@ -894,10 +894,10 @@ async function syncToSupabase(d) {
     } else {
       deletes.push(sb.from('games').delete().neq('id', ''));
     }
-    if (catIds.length > 0) {
-      deletes.push(sb.from('categories').delete().not('id', 'in', '(' + catIds.join(',') + ')'));
+    if (compIds.length > 0) {
+      deletes.push(sb.from('competitions').delete().not('id', 'in', '(' + compIds.join(',') + ')'));
     } else {
-      deletes.push(sb.from('categories').delete().neq('id', ''));
+      deletes.push(sb.from('competitions').delete().neq('id', ''));
     }
     await Promise.all(deletes);
 
@@ -917,8 +917,10 @@ let selectionState = null;
 let sortCol = 'goals';
 let sortDir = -1;
 let viewingGameId = null;
-let statsCategoryFilter = null;
-let gamesCategoryFilter = null;
+let statsCompetitionFilter = null;
+let gamesCompetitionFilter = null;
+
+const COMPETITION_CATEGORIES = ['Tournament', 'Showcase', 'Friendly', 'Cup', 'League'];
 
 // ── Navigation ──
 function switchView(name) {
@@ -1002,10 +1004,10 @@ function incrementOpponentGoals(delta) {
   render();
 }
 
-function getPlayerStats(playerId, categoryId) {
+function getPlayerStats(playerId, competitionId) {
   const finishedGames = data.games.filter(g => {
     if (!g.finished) return false;
-    if (categoryId !== undefined && categoryId !== null) return g.categoryId === categoryId;
+    if (competitionId !== undefined && competitionId !== null) return g.competitionId === competitionId;
     return true;
   });
   let goals = 0, assists = 0, games = 0;
@@ -1020,8 +1022,8 @@ function getPlayerStats(playerId, categoryId) {
   return { goals, assists, games };
 }
 
-function getCategoryById(id) {
-  return data.categories.find(c => c.id === id);
+function getCompetitionById(id) {
+  return data.competitions.find(c => c.id === id);
 }
 
 function resizeAndStorePhoto(playerId, file) {
@@ -1091,7 +1093,7 @@ function openPlayerProfile(playerId) {
         if (ev.scorerId === playerId) gGoals++;
         if (ev.assistId === playerId) gAssists++;
       });
-      const cat = g.categoryId ? getCategoryById(g.categoryId) : null;
+      const cat = g.competitionId ? getCompetitionById(g.competitionId) : null;
       const catBadge = cat ? ` <span class="category-badge">${cat.name}</span>` : '';
       return `<div class="profile-game-entry">
         <div>
@@ -1161,15 +1163,15 @@ function confirmDeletePlayer(playerId) {
 // ── Game management ──
 function startGame() {
   const opponent = document.getElementById('game-opponent').value.trim() || 'Unknown';
-  const catSelect = document.getElementById('game-category');
-  const categoryId = catSelect ? (catSelect.value || null) : null;
+  const compSelect = document.getElementById('game-competition');
+  const competitionId = compSelect ? (compSelect.value || null) : null;
   const game = {
     id: Date.now().toString(),
     opponent,
     date: new Date().toISOString(),
     events: [],
     finished: false,
-    categoryId,
+    competitionId,
     opponentGoals: 0
   };
   data.games.push(game);
@@ -1261,89 +1263,95 @@ function cancelSelection() {
   render();
 }
 
-// ── Category CRUD ──
-function addCategory() {
-  const nameEl = document.getElementById('cat-name');
-  const emojiEl = document.getElementById('cat-emoji');
+// ── Competition CRUD ──
+function competitionCategoryOptionsHTML(selected) {
+  return COMPETITION_CATEGORIES.map(t =>
+    `<option value="${t}"${t === selected ? ' selected' : ''}>${t}</option>`
+  ).join('');
+}
+
+function addCompetition() {
+  const nameEl = document.getElementById('comp-name');
+  const catEl = document.getElementById('comp-category-type');
   const name = nameEl.value.trim();
-  const emoji = emojiEl.value.trim() || '📁';
+  const categoryType = catEl.value;
   if (!name) return;
-  data.categories.push({ id: Date.now().toString(), name, emoji });
+  data.competitions.push({ id: Date.now().toString(), name, categoryType });
   saveData(data);
   closeModal();
   render();
 }
 
-function updateCategory(catId) {
-  const cat = getCategoryById(catId);
-  if (!cat) return;
-  const name = document.getElementById('cat-name').value.trim();
-  const emoji = document.getElementById('cat-emoji').value.trim() || '📁';
+function updateCompetition(compId) {
+  const comp = getCompetitionById(compId);
+  if (!comp) return;
+  const name = document.getElementById('comp-name').value.trim();
+  const categoryType = document.getElementById('comp-category-type').value;
   if (!name) return;
-  cat.name = name;
-  cat.emoji = emoji;
+  comp.name = name;
+  comp.categoryType = categoryType;
   saveData(data);
   closeModal();
   render();
 }
 
-function deleteCategory(catId) {
-  data.categories = data.categories.filter(c => c.id !== catId);
-  // Clear categoryId on orphaned games
-  data.games.forEach(g => { if (g.categoryId === catId) g.categoryId = null; });
+function deleteCompetition(compId) {
+  data.competitions = data.competitions.filter(c => c.id !== compId);
+  // Clear competitionId on orphaned games
+  data.games.forEach(g => { if (g.competitionId === compId) g.competitionId = null; });
   saveData(data);
   closeModal();
   render();
 }
 
-function openAddCategoryModal() {
+function openAddCompetitionModal() {
   openModal(`
-    <h2>New Category</h2>
-    <div class="form-group">
-      <label>Emoji</label>
-      <input class="input" id="cat-emoji" placeholder="📁" style="max-width:80px" value="⚽">
-    </div>
+    <h2>New Competition</h2>
     <div class="form-group">
       <label>Name</label>
-      <input class="input" id="cat-name" placeholder="e.g. Tournament" onkeydown="if(event.key==='Enter')addCategory()">
+      <input class="input" id="comp-name" placeholder="e.g. Rainier Challenge" onkeydown="if(event.key==='Enter')addCompetition()">
+    </div>
+    <div class="form-group">
+      <label>Category</label>
+      <select class="input" id="comp-category-type">${competitionCategoryOptionsHTML(COMPETITION_CATEGORIES[0])}</select>
     </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-      <button class="btn" onclick="addCategory()">Add</button>
+      <button class="btn" onclick="addCompetition()">Add</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('cat-name')?.focus(), 100);
+  setTimeout(() => document.getElementById('comp-name')?.focus(), 100);
 }
 
-function openEditCategoryModal(catId) {
-  const cat = getCategoryById(catId);
-  if (!cat) return;
+function openEditCompetitionModal(compId) {
+  const comp = getCompetitionById(compId);
+  if (!comp) return;
   openModal(`
-    <h2>Edit Category</h2>
-    <div class="form-group">
-      <label>Emoji</label>
-      <input class="input" id="cat-emoji" value="${cat.emoji}" style="max-width:80px">
-    </div>
+    <h2>Edit Competition</h2>
     <div class="form-group">
       <label>Name</label>
-      <input class="input" id="cat-name" value="${cat.name}">
+      <input class="input" id="comp-name" value="${comp.name}">
+    </div>
+    <div class="form-group">
+      <label>Category</label>
+      <select class="input" id="comp-category-type">${competitionCategoryOptionsHTML(comp.categoryType)}</select>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-danger btn-sm" onclick="if(confirm('Delete this category?'))deleteCategory('${catId}')">Delete</button>
+      <button class="btn btn-danger btn-sm" onclick="if(confirm('Delete this competition?'))deleteCompetition('${compId}')">Delete</button>
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-      <button class="btn" onclick="updateCategory('${catId}')">Save</button>
+      <button class="btn" onclick="updateCompetition('${compId}')">Save</button>
     </div>
   `);
 }
 
-// ── Category filters ──
-function filterStatsByCategory(catId) {
-  statsCategoryFilter = catId;
+// ── Competition filters ──
+function filterStatsByCompetition(catId) {
+  statsCompetitionFilter = catId;
   render();
 }
 
-function filterGamesByCategory(catId) {
-  gamesCategoryFilter = catId;
+function filterGamesByCompetition(catId) {
+  gamesCompetitionFilter = catId;
   render();
 }
 
@@ -1384,7 +1392,7 @@ function renderGame() {
     return;
   }
 
-  const cat = game.categoryId ? getCategoryById(game.categoryId) : null;
+  const cat = game.competitionId ? getCompetitionById(game.competitionId) : null;
 
   const goalLog = game.events.slice().reverse().map((ev, i) => `
     <div class="goal-entry">
@@ -1508,17 +1516,17 @@ function renderHistory() {
 
   // Filter pills
   let filterHTML = '';
-  if (data.categories.length > 0) {
-    const pills = [`<button class="filter-pill${gamesCategoryFilter === null ? ' active' : ''}" onclick="filterGamesByCategory(null)">All</button>`];
-    data.categories.forEach(c => {
-      pills.push(`<button class="filter-pill${gamesCategoryFilter === c.id ? ' active' : ''}" onclick="filterGamesByCategory('${c.id}')">${c.name}</button>`);
+  if (data.competitions.length > 0) {
+    const pills = [`<button class="filter-pill${gamesCompetitionFilter === null ? ' active' : ''}" onclick="filterGamesByCompetition(null)">All</button>`];
+    data.competitions.forEach(c => {
+      pills.push(`<button class="filter-pill${gamesCompetitionFilter === c.id ? ' active' : ''}" onclick="filterGamesByCompetition('${c.id}')">${c.name}</button>`);
     });
     filterHTML = `<div class="filter-row">${pills.join('')}</div>`;
   }
 
   // Apply filter
-  if (gamesCategoryFilter !== null) {
-    finished = finished.filter(g => g.categoryId === gamesCategoryFilter);
+  if (gamesCompetitionFilter !== null) {
+    finished = finished.filter(g => g.competitionId === gamesCompetitionFilter);
   }
 
   if (data.games.filter(g => g.finished).length === 0) {
@@ -1554,7 +1562,7 @@ function renderHistory() {
       scorers[name] = (scorers[name] || 0) + 1;
     });
     const topScorers = Object.entries(scorers).sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n} (${c})`).join(', ');
-    const cat = g.categoryId ? getCategoryById(g.categoryId) : null;
+    const cat = g.competitionId ? getCompetitionById(g.competitionId) : null;
     const catBadge = cat ? `<span class="category-badge">${cat.name}</span>` : '';
 
     return `<div class="card game-card" onclick="viewGame('${g.id}')">
@@ -1613,7 +1621,7 @@ function renderGameDetail(el) {
     </div>
   `).join('');
 
-  const cat = game.categoryId ? getCategoryById(game.categoryId) : null;
+  const cat = game.competitionId ? getCompetitionById(game.competitionId) : null;
   const catBadge = cat ? ` <span class="category-badge">${cat.name}</span>` : '';
 
   // Goal selection UI for finished games
@@ -1684,17 +1692,17 @@ function renderStats() {
 
   // Filter pills
   let filterHTML = '';
-  if (data.categories.length > 0) {
-    const pills = [`<button class="filter-pill${statsCategoryFilter === null ? ' active' : ''}" onclick="filterStatsByCategory(null)">All</button>`];
-    data.categories.forEach(c => {
-      pills.push(`<button class="filter-pill${statsCategoryFilter === c.id ? ' active' : ''}" onclick="filterStatsByCategory('${c.id}')">${c.name}</button>`);
+  if (data.competitions.length > 0) {
+    const pills = [`<button class="filter-pill${statsCompetitionFilter === null ? ' active' : ''}" onclick="filterStatsByCompetition(null)">All</button>`];
+    data.competitions.forEach(c => {
+      pills.push(`<button class="filter-pill${statsCompetitionFilter === c.id ? ' active' : ''}" onclick="filterStatsByCompetition('${c.id}')">${c.name}</button>`);
     });
     filterHTML = `<div class="filter-row">${pills.join('')}</div>`;
   }
 
   // Apply filter
-  if (statsCategoryFilter !== null) {
-    finishedGames = finishedGames.filter(g => g.categoryId === statsCategoryFilter);
+  if (statsCompetitionFilter !== null) {
+    finishedGames = finishedGames.filter(g => g.competitionId === statsCompetitionFilter);
   }
 
   if (data.games.filter(g => g.finished).length === 0) {
@@ -1791,10 +1799,13 @@ function renderSettings() {
     return;
   }
 
-  const catItems = data.categories.map(c => `
+  const compItems = data.competitions.map(c => `
     <div class="settings-item">
-      <div class="settings-item-left" onclick="openEditCategoryModal('${c.id}')">
-        <span class="settings-item-name">${c.name}</span>
+      <div class="settings-item-left" onclick="openEditCompetitionModal('${c.id}')">
+        <div>
+          <span class="settings-item-name">${c.name}</span>
+          <div style="font-size:0.72rem;color:var(--muted);margin-top:1px">${c.categoryType || ''}</div>
+        </div>
       </div>
     </div>
   `).join('');
@@ -1803,10 +1814,10 @@ function renderSettings() {
     <div class="view-header"><h1>Settings</h1></div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
-        <label style="margin-bottom:0">Game Categories</label>
-        <button class="btn btn-sm" onclick="openAddCategoryModal()">+ Add</button>
+        <label style="margin-bottom:0">Competitions</label>
+        <button class="btn btn-sm" onclick="openAddCompetitionModal()">+ Add</button>
       </div>
-      ${catItems || '<div style="color:var(--muted);font-size:0.85rem;padding:0.5rem 0">No categories yet. Add one to tag your games.</div>'}
+      ${compItems || '<div style="color:var(--muted);font-size:0.85rem;padding:0.5rem 0">No competitions yet. Add one to tag your games.</div>'}
     </div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -1831,9 +1842,9 @@ function renderSettings() {
 
 // ── Modals ──
 function openNewGameModal() {
-  const catOptions = data.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  const catSelect = data.categories.length > 0
-    ? `<div class="form-group"><label>Category</label><select class="input" id="game-category"><option value="">None</option>${catOptions}</select></div>`
+  const compOptions = data.competitions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  const compSelect = data.competitions.length > 0
+    ? `<div class="form-group"><label>Competition</label><select class="input" id="game-competition"><option value="">None</option>${compOptions}</select></div>`
     : '';
 
   openModal(`
@@ -1842,7 +1853,7 @@ function openNewGameModal() {
       <label>Opponent</label>
       <input class="input" id="game-opponent" placeholder="e.g. Eagles" onkeydown="if(event.key==='Enter')startGame()">
     </div>
-    ${catSelect}
+    ${compSelect}
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
       <button class="btn" onclick="startGame()">Start Game</button>
@@ -1855,8 +1866,8 @@ function openEditGameModal(gameId) {
   const game = data.games.find(g => g.id === gameId);
   if (!game) return;
   const dateVal = new Date(game.date).toISOString().split('T')[0];
-  const catOptions = data.categories.map(c =>
-    `<option value="${c.id}"${game.categoryId === c.id ? ' selected' : ''}>${c.name}</option>`
+  const compOptions = data.competitions.map(c =>
+    `<option value="${c.id}"${game.competitionId === c.id ? ' selected' : ''}>${c.name}</option>`
   ).join('');
   openModal(`
     <h2>Edit Game</h2>
@@ -1869,10 +1880,10 @@ function openEditGameModal(gameId) {
       <input type="date" class="input" id="edit-game-date" value="${dateVal}">
     </div>
     <div class="form-group">
-      <label>Category</label>
-      <select class="input" id="edit-game-category">
+      <label>Competition</label>
+      <select class="input" id="edit-game-competition">
         <option value="">None</option>
-        ${catOptions}
+        ${compOptions}
       </select>
     </div>
     <div class="form-group">
@@ -1891,11 +1902,11 @@ function saveGameEdits(gameId) {
   if (!game) return;
   const opponent = document.getElementById('edit-game-opponent').value.trim() || 'Unknown';
   const dateStr = document.getElementById('edit-game-date').value;
-  const categoryId = document.getElementById('edit-game-category').value || null;
+  const competitionId = document.getElementById('edit-game-competition').value || null;
   const oppGoals = parseInt(document.getElementById('edit-game-opp-goals').value) || 0;
   game.opponent = opponent;
   if (dateStr) game.date = new Date(dateStr + 'T12:00:00').toISOString();
-  game.categoryId = categoryId;
+  game.competitionId = competitionId;
   game.opponentGoals = Math.max(0, oppGoals);
   saveData(data);
   closeModal();
@@ -1904,11 +1915,11 @@ function saveGameEdits(gameId) {
 
 function openAddHistoricalGameModal() {
   const today = new Date().toISOString().split('T')[0];
-  const catOptions = data.categories.map(c =>
+  const compOptions = data.competitions.map(c =>
     `<option value="${c.id}">${c.name}</option>`
   ).join('');
-  const catSelect = data.categories.length > 0
-    ? `<div class="form-group"><label>Category</label><select class="input" id="hist-game-category"><option value="">None</option>${catOptions}</select></div>`
+  const compSelect = data.competitions.length > 0
+    ? `<div class="form-group"><label>Competition</label><select class="input" id="hist-game-competition"><option value="">None</option>${compOptions}</select></div>`
     : '';
   openModal(`
     <h2>Add Past Game</h2>
@@ -1920,7 +1931,7 @@ function openAddHistoricalGameModal() {
       <label>Date</label>
       <input type="date" class="input" id="hist-game-date" value="${today}">
     </div>
-    ${catSelect}
+    ${compSelect}
     <div class="form-group">
       <label>Opponent Goals</label>
       <input type="number" class="input" id="hist-game-opp-goals" value="0" min="0" style="max-width:100px">
@@ -1936,8 +1947,8 @@ function openAddHistoricalGameModal() {
 function createHistoricalGame() {
   const opponent = document.getElementById('hist-game-opponent').value.trim() || 'Unknown';
   const dateStr = document.getElementById('hist-game-date').value;
-  const catEl = document.getElementById('hist-game-category');
-  const categoryId = catEl ? (catEl.value || null) : null;
+  const compEl = document.getElementById('hist-game-competition');
+  const competitionId = compEl ? (compEl.value || null) : null;
   const oppGoals = parseInt(document.getElementById('hist-game-opp-goals').value) || 0;
   const game = {
     id: Date.now().toString(),
@@ -1945,7 +1956,7 @@ function createHistoricalGame() {
     date: dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString(),
     events: [],
     finished: true,
-    categoryId,
+    competitionId,
     opponentGoals: Math.max(0, oppGoals)
   };
   data.games.push(game);
