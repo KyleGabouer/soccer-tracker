@@ -342,7 +342,7 @@
     .profile-game-entry {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       padding: 0.5rem 0;
       border-bottom: 1px solid var(--border);
       font-size: 0.82rem;
@@ -350,9 +350,9 @@
 
     .profile-game-entry:last-child { border-bottom: none; }
 
-    .pge-opp { font-weight: 600; }
+    .pge-opp { font-weight: 600; margin: 0.1rem 0; }
     .pge-date { color: var(--muted); font-size: 0.75rem; }
-    .pge-stats { font-weight: 700; color: var(--text); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+    .pge-stats { font-weight: 700; color: var(--text); font-size: 0.8rem; font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
 
     /* ── Old roster items (unused now but kept for delete btn style) ── */
     .delete-btn {
@@ -390,6 +390,7 @@
       letter-spacing: -2px;
       margin: 0.25rem 0;
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
 
     .game-clock {
@@ -545,33 +546,33 @@
       cursor: pointer;
     }
 
-    .game-card-header {
+    .game-card-row {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      margin-bottom: 0.25rem;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-top: 0.35rem;
     }
 
     .game-card-opponent { font-weight: 700; font-size: 1rem; }
-
-    .game-card-score {
-      font-weight: 800;
-      font-size: 1.1rem;
-      color: var(--text);
-      font-variant-numeric: tabular-nums;
-    }
 
     .game-card-date {
       font-size: 0.78rem;
       color: var(--muted);
     }
 
+    .game-card-score {
+      font-weight: 800;
+      font-size: 1.1rem;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
     .game-card-stats {
-      display: flex;
-      gap: 1rem;
-      margin-top: 0.5rem;
       font-size: 0.78rem;
       color: var(--muted);
+      text-align: right;
     }
 
     .game-detail-back {
@@ -605,8 +606,7 @@
       font-size: 0.7rem;
       font-weight: 600;
       color: var(--muted);
-      margin-left: 0.4rem;
-      vertical-align: middle;
+      margin-top: 0.3rem;
     }
 
     /* ── Filter pills ── */
@@ -1125,11 +1125,11 @@ function openPlayerProfile(playerId) {
         if (ev.assistId === playerId) gAssists++;
       });
       const cat = g.competitionId ? getCompetitionById(g.competitionId) : null;
-      const catBadge = cat ? ` <span class="category-badge">${cat.name}</span>` : '';
       return `<div class="profile-game-entry">
         <div>
-          <div class="pge-opp">vs ${g.opponent}${catBadge}</div>
           <div class="pge-date">${formatDate(g.date)}</div>
+          <div class="pge-opp">vs ${g.opponent}</div>
+          ${cat ? `<div><span class="category-badge">${cat.name}</span></div>` : ''}
         </div>
         <div class="pge-stats">${gGoals}G ${gAssists}A</div>
       </div>`;
@@ -1491,9 +1491,10 @@ function renderGame() {
       ${admin ? `<button class="btn btn-sm btn-danger" onclick="confirmEndGame()">End Game</button>` : ''}
     </div>
     <div class="game-status">
-      <div class="game-opponent">vs ${game.opponent}${cat ? ` <span class="category-badge">${cat.name}</span>` : ''}</div>
-      <div class="game-score">${formatScore(game)}</div>
       <div class="game-clock">${formatDate(game.date)}</div>
+      <div class="game-opponent">vs ${game.opponent}</div>
+      ${cat ? `<div><span class="category-badge">${cat.name}</span></div>` : ''}
+      <div class="game-score">${formatScore(game)}</div>
       <div style="margin-top:0.5rem;display:flex;align-items:center;justify-content:center;gap:0.75rem">
         <span style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Opponent Goals</span>
         ${oppGoalsControls}
@@ -1594,15 +1595,17 @@ function renderHistory() {
     });
     const topScorers = Object.entries(scorers).sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n} (${c})`).join(', ');
     const cat = g.competitionId ? getCompetitionById(g.competitionId) : null;
-    const catBadge = cat ? `<span class="category-badge">${cat.name}</span>` : '';
 
     return `<div class="card game-card" onclick="goToGame('${g.id}')">
-      <div class="game-card-header">
-        <span class="game-card-opponent">vs ${g.opponent} ${catBadge}</span>
+      <div class="game-card-date">${formatDate(g.date)}</div>
+      <div class="game-card-row">
+        <span class="game-card-opponent">vs ${g.opponent}</span>
         <span class="game-card-score" style="color:${g.events.length < g.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(g)}</span>
       </div>
-      <div class="game-card-date">${formatDate(g.date)}</div>
-      ${topScorers ? `<div class="game-card-stats">${topScorers}</div>` : ''}
+      ${cat || topScorers ? `<div class="game-card-row">
+        <span>${cat ? `<span class="category-badge">${cat.name}</span>` : ''}</span>
+        <span class="game-card-stats">${topScorers}</span>
+      </div>` : ''}
     </div>`;
   }).join('');
 
@@ -1658,7 +1661,6 @@ function renderGameDetail(el) {
   `).join('');
 
   const cat = game.competitionId ? getCompetitionById(game.competitionId) : null;
-  const catBadge = cat ? ` <span class="category-badge">${cat.name}</span>` : '';
 
   // Goal selection UI for finished games
   const isSelectingForThis = admin && selectionState && selectionState.gameId === game.id;
@@ -1706,11 +1708,14 @@ function renderGameDetail(el) {
 
   el.innerHTML = `
     <button class="game-detail-back" onclick="goToView('history')">← All Games</button>
-    <div class="view-header">
-      <h1>vs ${game.opponent}</h1>
+    <div class="view-header" style="align-items:flex-start">
+      <div>
+        <div class="game-card-date">${formatDate(game.date)}</div>
+        <h1>vs ${game.opponent}</h1>
+        ${cat ? `<div><span class="category-badge">${cat.name}</span></div>` : ''}
+      </div>
       <span class="game-card-score" style="font-size:1.5rem;color:${game.events.length < game.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(game)}</span>
     </div>
-    <div style="font-size:0.85rem;color:var(--muted);margin-bottom:1rem">${formatDate(game.date)}${catBadge}</div>
     ${admin ? `<div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
       <button class="btn btn-sm btn-blue" onclick="openEditGameModal('${game.id}')">Edit Game</button>
       <button class="btn btn-sm${isSelectingForThis ? ' btn-outline' : ''}" onclick="${isSelectingForThis ? 'cancelSelection()' : `startAddGoalToGame('${game.id}')`}">${isSelectingForThis ? 'Cancel Add' : 'Add Goal'}</button>
