@@ -5,29 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Soccer Stats Tracker</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0f1115;
-      --surface: #1a1d23;
-      --surface2: #22262e;
-      --border: rgba(255,255,255,0.08);
-      --text: #e4e4e7;
-      --muted: #71717a;
-      --green: #22c55e;
-      --green-dim: rgba(34,197,94,0.15);
-      --blue: #3b82f6;
-      --blue-dim: rgba(59,130,246,0.15);
-      --yellow: #eab308;
-      --yellow-dim: rgba(234,179,8,0.15);
-      --red: #ef4444;
-      --red-dim: rgba(239,68,68,0.15);
+      --bg: #ffffff;
+      --surface: #f4f2ee;
+      --surface2: #eceae3;
+      --border: rgba(10,10,10,0.12);
+      --text: #0a0a0a;
+      --muted: #6b6b6b;
+      --accent: #eef03a;
+      --accent-dim: rgba(238,240,58,0.35);
+      --accent-ink: #0a0a0a;
+      --red: #c33125;
+      --red-dim: rgba(195,49,37,0.08);
       --radius: 12px;
+      --radius-sm: 6px;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100dvh;
@@ -61,7 +61,7 @@
       transition: color 0.2s;
     }
 
-    .tab.active { color: var(--green); }
+    .tab.active { color: var(--text); }
     .tab svg { width: 22px; height: 22px; }
 
     /* ── Views ── */
@@ -89,12 +89,12 @@
       align-items: center;
       gap: 6px;
       padding: 0.55rem 1rem;
-      background: var(--green);
-      color: #000;
+      background: var(--text);
+      color: var(--bg);
       border: none;
-      border-radius: 999px;
+      border-radius: var(--radius-sm);
       font-size: 0.82rem;
-      font-weight: 600;
+      font-weight: 500;
       cursor: pointer;
       transition: opacity 0.2s;
       font-family: inherit;
@@ -107,8 +107,9 @@
       color: var(--text);
       border: 1px solid var(--border);
     }
-    .btn-danger { background: var(--red); }
-    .btn-blue { background: var(--blue); color: #fff; }
+    .btn-danger { background: var(--bg); color: var(--red); border: 1px solid var(--red); }
+    .btn-blue { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-accent { background: var(--accent); color: var(--accent-ink); }
 
     /* ── Cards ── */
     .card {
@@ -125,7 +126,7 @@
       padding: 0.65rem 0.85rem;
       background: var(--surface2);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       color: var(--text);
       font-size: 0.9rem;
       font-family: inherit;
@@ -133,7 +134,7 @@
       transition: border-color 0.2s;
     }
 
-    .input:focus { border-color: var(--green); }
+    .input:focus { border-color: transparent; outline: 2px solid var(--accent); outline-offset: 1px; }
     .input::placeholder { color: var(--muted); }
 
     .form-row {
@@ -248,7 +249,8 @@
     .roster-card .rc-number {
       font-size: 0.8rem;
       font-weight: 800;
-      color: var(--green);
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
     }
 
     .roster-card .rc-name {
@@ -301,7 +303,7 @@
     .profile-photo-label {
       text-align: center;
       font-size: 0.72rem;
-      color: var(--green);
+      color: var(--muted);
       margin-top: 0.3rem;
       margin-bottom: 0.75rem;
     }
@@ -323,6 +325,7 @@
     .profile-stat .ps-val {
       font-size: 1.3rem;
       font-weight: 800;
+      font-variant-numeric: tabular-nums;
     }
 
     .profile-stat .ps-label {
@@ -349,7 +352,7 @@
 
     .pge-opp { font-weight: 600; }
     .pge-date { color: var(--muted); font-size: 0.75rem; }
-    .pge-stats { font-weight: 700; color: var(--green); font-size: 0.8rem; }
+    .pge-stats { font-weight: 700; color: var(--text); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 
     /* ── Old roster items (unused now but kept for delete btn style) ── */
     .delete-btn {
@@ -386,6 +389,7 @@
       font-weight: 800;
       letter-spacing: -2px;
       margin: 0.25rem 0;
+      font-variant-numeric: tabular-nums;
     }
 
     .game-clock {
@@ -398,10 +402,10 @@
       text-align: center;
       padding: 0.75rem;
       font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--green);
-      background: var(--green-dim);
-      border-radius: 8px;
+      font-weight: 700;
+      color: var(--accent-ink);
+      background: var(--accent);
+      border-radius: var(--radius-sm);
       margin-bottom: 1rem;
     }
 
@@ -429,17 +433,17 @@
     }
 
     .player-btn:active { transform: scale(0.95); }
-    .player-btn .p-number { font-size: 1.1rem; font-weight: 800; }
+    .player-btn .p-number { font-size: 1.1rem; font-weight: 800; font-variant-numeric: tabular-nums; }
     .player-btn .p-name { font-size: 0.65rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 
     .player-btn.selecting-goal {
-      border-color: var(--green);
-      background: var(--green-dim);
+      border-color: var(--text);
+      background: var(--accent-dim);
     }
 
     .player-btn.selecting-assist {
-      border-color: var(--blue);
-      background: var(--blue-dim);
+      border-color: var(--text);
+      background: var(--surface2);
     }
 
     .goal-log {
@@ -461,8 +465,8 @@
       width: 24px;
       height: 24px;
       border-radius: 50%;
-      background: var(--green-dim);
-      color: var(--green);
+      background: var(--accent);
+      color: var(--accent-ink);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -516,12 +520,16 @@
     }
 
     .stats-table th:nth-child(n+3) { text-align: center; }
-    .stats-table th.sorted { color: var(--green); }
+    .stats-table th.sorted { color: var(--text); }
 
     .stats-table td {
       padding: 0.7rem 0.5rem;
       border-bottom: 1px solid var(--border);
       font-size: 0.9rem;
+    }
+
+    .stats-table td:nth-child(2n) {
+      font-variant-numeric: tabular-nums;
     }
 
     .stats-table td:nth-child(n+3) {
@@ -549,7 +557,8 @@
     .game-card-score {
       font-weight: 800;
       font-size: 1.1rem;
-      color: var(--green);
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
     }
 
     .game-card-date {
@@ -571,7 +580,7 @@
       gap: 4px;
       background: none;
       border: none;
-      color: var(--green);
+      color: var(--text);
       font-size: 0.85rem;
       font-weight: 600;
       cursor: pointer;
@@ -628,9 +637,9 @@
     }
 
     .filter-pill.active {
-      background: var(--green-dim);
-      border-color: var(--green);
-      color: var(--green);
+      background: var(--accent-dim);
+      border-color: var(--text);
+      color: var(--text);
     }
 
     /* ── Settings items ── */
@@ -1083,7 +1092,7 @@ function openPlayerProfile(playerId) {
         if (ev.assistId === playerId) gAssists++;
       });
       const cat = g.categoryId ? getCategoryById(g.categoryId) : null;
-      const catBadge = cat ? ` <span class="category-badge">${cat.emoji} ${cat.name}</span>` : '';
+      const catBadge = cat ? ` <span class="category-badge">${cat.name}</span>` : '';
       return `<div class="profile-game-entry">
         <div>
           <div class="pge-opp">vs ${g.opponent}${catBadge}</div>
@@ -1404,7 +1413,7 @@ function renderGame() {
       prompt = `<div class="prompt-text">Tap the player who scored</div>`;
     } else if (isAssistStep) {
       const scorer = playerShort(selectionState.goalScorerId);
-      prompt = `<div class="prompt-text" style="background:var(--blue-dim);color:var(--blue)">Goal by ${scorer} — tap the assister</div>`;
+      prompt = `<div class="prompt-text" style="background:var(--surface2);color:var(--text)">Goal by ${scorer} — tap the assister</div>`;
     }
 
     const playerBtns = sortedPlayers().map(p => {
@@ -1424,7 +1433,7 @@ function renderGame() {
     }).join('');
 
     const ownGoalBtn = !isSelecting
-      ? `<button class="player-btn selecting-goal" onclick="selectGoalScorer('${OWN_GOAL_ID}')" style="border-color:var(--yellow);background:var(--yellow-dim)">
+      ? `<button class="player-btn selecting-goal" onclick="selectGoalScorer('${OWN_GOAL_ID}')" style="border-color:var(--border);background:var(--surface2)">
           <span class="p-number">OG</span>
           <span class="p-name">Own Goal</span>
         </button>`
@@ -1443,7 +1452,7 @@ function renderGame() {
       ${admin ? `<button class="btn btn-sm btn-danger" onclick="confirmEndGame()">End Game</button>` : ''}
     </div>
     <div class="game-status">
-      <div class="game-opponent">vs ${game.opponent}${cat ? ` <span class="category-badge">${cat.emoji} ${cat.name}</span>` : ''}</div>
+      <div class="game-opponent">vs ${game.opponent}${cat ? ` <span class="category-badge">${cat.name}</span>` : ''}</div>
       <div class="game-score">${formatScore(game)}</div>
       <div class="game-clock">${formatDate(game.date)}</div>
       <div style="margin-top:0.5rem;display:flex;align-items:center;justify-content:center;gap:0.75rem">
@@ -1502,7 +1511,7 @@ function renderHistory() {
   if (data.categories.length > 0) {
     const pills = [`<button class="filter-pill${gamesCategoryFilter === null ? ' active' : ''}" onclick="filterGamesByCategory(null)">All</button>`];
     data.categories.forEach(c => {
-      pills.push(`<button class="filter-pill${gamesCategoryFilter === c.id ? ' active' : ''}" onclick="filterGamesByCategory('${c.id}')">${c.emoji} ${c.name}</button>`);
+      pills.push(`<button class="filter-pill${gamesCategoryFilter === c.id ? ' active' : ''}" onclick="filterGamesByCategory('${c.id}')">${c.name}</button>`);
     });
     filterHTML = `<div class="filter-row">${pills.join('')}</div>`;
   }
@@ -1534,7 +1543,7 @@ function renderHistory() {
     <div><div style="font-size:1.3rem;font-weight:800">${w}-${l}-${t}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">W-L-T</div></div>
     <div><div style="font-size:1.3rem;font-weight:800">${gf}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GF</div></div>
     <div><div style="font-size:1.3rem;font-weight:800">${ga}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GA</div></div>
-    <div><div style="font-size:1.3rem;font-weight:800;color:${gd>0?'var(--green)':gd<0?'var(--red)':'var(--text)'}">${gd>0?'+':''}${gd}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GD</div></div>
+    <div><div style="font-size:1.3rem;font-weight:800;color:${gd<0?'var(--red)':'var(--text)'}">${gd>0?'+':''}${gd}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GD</div></div>
   </div>`;
 
   const gameCards = finished.map(g => {
@@ -1546,12 +1555,12 @@ function renderHistory() {
     });
     const topScorers = Object.entries(scorers).sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n} (${c})`).join(', ');
     const cat = g.categoryId ? getCategoryById(g.categoryId) : null;
-    const catBadge = cat ? `<span class="category-badge">${cat.emoji} ${cat.name}</span>` : '';
+    const catBadge = cat ? `<span class="category-badge">${cat.name}</span>` : '';
 
     return `<div class="card game-card" onclick="viewGame('${g.id}')">
       <div class="game-card-header">
         <span class="game-card-opponent">vs ${g.opponent} ${catBadge}</span>
-        <span class="game-card-score" style="color:${g.events.length > g.opponentGoals ? 'var(--green)' : g.events.length < g.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(g)}</span>
+        <span class="game-card-score" style="color:${g.events.length < g.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(g)}</span>
       </div>
       <div class="game-card-date">${formatDate(g.date)}</div>
       ${topScorers ? `<div class="game-card-stats">${topScorers}</div>` : ''}
@@ -1605,7 +1614,7 @@ function renderGameDetail(el) {
   `).join('');
 
   const cat = game.categoryId ? getCategoryById(game.categoryId) : null;
-  const catBadge = cat ? ` <span class="category-badge">${cat.emoji} ${cat.name}</span>` : '';
+  const catBadge = cat ? ` <span class="category-badge">${cat.name}</span>` : '';
 
   // Goal selection UI for finished games
   const isSelectingForThis = admin && selectionState && selectionState.gameId === game.id;
@@ -1616,7 +1625,7 @@ function renderGameDetail(el) {
     let prompt = '';
     if (isAssistStep) {
       const scorer = playerShort(selectionState.goalScorerId);
-      prompt = `<div class="prompt-text" style="background:var(--blue-dim);color:var(--blue)">Goal by ${scorer} — tap the assister</div>`;
+      prompt = `<div class="prompt-text" style="background:var(--surface2);color:var(--text)">Goal by ${scorer} — tap the assister</div>`;
     } else {
       prompt = `<div class="prompt-text">Tap the player who scored</div>`;
     }
@@ -1638,7 +1647,7 @@ function renderGameDetail(el) {
     }).join('');
 
     const ownGoalBtn = !isAssistStep
-      ? `<button class="player-btn selecting-goal" onclick="selectGoalScorer('${OWN_GOAL_ID}','${game.id}')" style="border-color:var(--yellow);background:var(--yellow-dim)">
+      ? `<button class="player-btn selecting-goal" onclick="selectGoalScorer('${OWN_GOAL_ID}','${game.id}')" style="border-color:var(--border);background:var(--surface2)">
           <span class="p-number">OG</span>
           <span class="p-name">Own Goal</span>
         </button>`
@@ -1655,7 +1664,7 @@ function renderGameDetail(el) {
     <button class="game-detail-back" onclick="viewingGameId=null;selectionState=null;render()">← All Games</button>
     <div class="view-header">
       <h1>vs ${game.opponent}</h1>
-      <span class="game-card-score" style="font-size:1.5rem;color:${game.events.length > game.opponentGoals ? 'var(--green)' : game.events.length < game.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(game)}</span>
+      <span class="game-card-score" style="font-size:1.5rem;color:${game.events.length < game.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(game)}</span>
     </div>
     <div style="font-size:0.85rem;color:var(--muted);margin-bottom:1rem">${formatDate(game.date)}${catBadge}</div>
     ${admin ? `<div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
@@ -1678,7 +1687,7 @@ function renderStats() {
   if (data.categories.length > 0) {
     const pills = [`<button class="filter-pill${statsCategoryFilter === null ? ' active' : ''}" onclick="filterStatsByCategory(null)">All</button>`];
     data.categories.forEach(c => {
-      pills.push(`<button class="filter-pill${statsCategoryFilter === c.id ? ' active' : ''}" onclick="filterStatsByCategory('${c.id}')">${c.emoji} ${c.name}</button>`);
+      pills.push(`<button class="filter-pill${statsCategoryFilter === c.id ? ' active' : ''}" onclick="filterStatsByCategory('${c.id}')">${c.name}</button>`);
     });
     filterHTML = `<div class="filter-row">${pills.join('')}</div>`;
   }
@@ -1736,7 +1745,7 @@ ${(() => { let w=0,l=0,t=0,gf=0,ga=0; finishedGames.forEach(g => { const ours=g.
       <div><div style="font-size:1.3rem;font-weight:800">${w}-${l}-${t}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">W-L-T</div></div>
       <div><div style="font-size:1.3rem;font-weight:800">${gf}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GF</div></div>
       <div><div style="font-size:1.3rem;font-weight:800">${ga}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GA</div></div>
-      <div><div style="font-size:1.3rem;font-weight:800;color:${gd>0?'var(--green)':gd<0?'var(--red)':'var(--text)'}">${gd>0?'+':''}${gd}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GD</div></div>
+      <div><div style="font-size:1.3rem;font-weight:800;color:${gd<0?'var(--red)':'var(--text)'}">${gd>0?'+':''}${gd}</div><div style="font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">GD</div></div>
     </div>`; })()}
     ${rows ? `<div class="card"><table class="stats-table"><thead><tr>
       <th>#</th>
@@ -1785,7 +1794,6 @@ function renderSettings() {
   const catItems = data.categories.map(c => `
     <div class="settings-item">
       <div class="settings-item-left" onclick="openEditCategoryModal('${c.id}')">
-        <span class="settings-item-emoji">${c.emoji}</span>
         <span class="settings-item-name">${c.name}</span>
       </div>
     </div>
@@ -1823,7 +1831,7 @@ function renderSettings() {
 
 // ── Modals ──
 function openNewGameModal() {
-  const catOptions = data.categories.map(c => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
+  const catOptions = data.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   const catSelect = data.categories.length > 0
     ? `<div class="form-group"><label>Category</label><select class="input" id="game-category"><option value="">None</option>${catOptions}</select></div>`
     : '';
@@ -1848,7 +1856,7 @@ function openEditGameModal(gameId) {
   if (!game) return;
   const dateVal = new Date(game.date).toISOString().split('T')[0];
   const catOptions = data.categories.map(c =>
-    `<option value="${c.id}"${game.categoryId === c.id ? ' selected' : ''}>${c.emoji} ${c.name}</option>`
+    `<option value="${c.id}"${game.categoryId === c.id ? ' selected' : ''}>${c.name}</option>`
   ).join('');
   openModal(`
     <h2>Edit Game</h2>
@@ -1897,7 +1905,7 @@ function saveGameEdits(gameId) {
 function openAddHistoricalGameModal() {
   const today = new Date().toISOString().split('T')[0];
   const catOptions = data.categories.map(c =>
-    `<option value="${c.id}">${c.emoji} ${c.name}</option>`
+    `<option value="${c.id}">${c.name}</option>`
   ).join('');
   const catSelect = data.categories.length > 0
     ? `<div class="form-group"><label>Category</label><select class="input" id="hist-game-category"><option value="">None</option>${catOptions}</select></div>`
