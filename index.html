@@ -923,6 +923,30 @@ let gamesCompetitionFilter = null;
 const COMPETITION_CATEGORIES = ['Tournament', 'Showcase', 'Friendly', 'Cup', 'League'];
 
 // ── Navigation ──
+// URL hash routing — #/game, #/games, #/games/<id>, #/stats, #/roster, #/settings.
+// A hash (not a real path) works with zero server config on GitHub Pages and
+// lets a refresh or a shared link land back on the exact same screen.
+const VIEW_SLUGS = { game: 'game', history: 'games', stats: 'stats', roster: 'roster', settings: 'settings' };
+const SLUG_TO_VIEW = Object.fromEntries(Object.entries(VIEW_SLUGS).map(([view, slug]) => [slug, view]));
+
+function hashFor(view, subId) {
+  const slug = VIEW_SLUGS[view] || view;
+  return subId ? `#/${slug}/${subId}` : `#/${slug}`;
+}
+
+function parseHash() {
+  const raw = location.hash.replace(/^#\/?/, '');
+  const [slugPart, subId] = raw.split('/');
+  const view = SLUG_TO_VIEW[slugPart] || 'game';
+  return { view, subId: subId || null };
+}
+
+function applyRoute() {
+  const { view, subId } = parseHash();
+  switchView(view);
+  if (view === 'history' && subId) viewGame(subId);
+}
+
 function switchView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -931,6 +955,7 @@ function switchView(name) {
   viewingGameId = null;
   selectionState = null;
   render();
+  history.replaceState(null, '', hashFor(name, null));
 }
 
 function openModal(html) {
@@ -1586,6 +1611,7 @@ function renderHistory() {
 function viewGame(id) {
   viewingGameId = id;
   render();
+  history.replaceState(null, '', hashFor('history', id));
 }
 
 function renderGameDetail(el) {
@@ -1669,7 +1695,7 @@ function renderGameDetail(el) {
   }
 
   el.innerHTML = `
-    <button class="game-detail-back" onclick="viewingGameId=null;selectionState=null;render()">← All Games</button>
+    <button class="game-detail-back" onclick="switchView('history')">← All Games</button>
     <div class="view-header">
       <h1>vs ${game.opponent}</h1>
       <span class="game-card-score" style="font-size:1.5rem;color:${game.events.length < game.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(game)}</span>
@@ -1978,17 +2004,22 @@ function confirmEndGame() {
 }
 
 // ── Init ──
-// Render immediately with localStorage data, then refresh from Supabase
-render();
+// Apply whatever's in the URL immediately using localStorage data, then refresh from Supabase
+applyRoute();
 
 (async () => {
   const remote = await loadDataFromSupabase();
   if (remote) {
     data = remote;
     saveDataLocal(data); // Update local cache
-    render();
+    // Re-apply the route: a shared link to a game/player that wasn't in the
+    // stale local cache will resolve correctly once fresh data is in.
+    applyRoute();
   }
 })();
+
+// Back/forward, a pasted URL, or a shared link opened in an already-running tab
+window.addEventListener('hashchange', applyRoute);
 </script>
 </body>
 </html>
