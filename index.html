@@ -700,7 +700,7 @@
   </button>
   <button class="tab" data-view="roster" onclick="goToView('roster')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-    Roster
+    Team
   </button>
   <button class="tab" data-view="settings" onclick="goToView('settings')">
     <svg id="tab-settings-icon-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -791,6 +791,9 @@ function loadDataLocal() {
   }
   if (!d.competitions) d.competitions = [];
   if (!d.teams) d.teams = [];
+  if (!d.ownTeam) d.ownTeam = { name: '', logo: null };
+  if (d.ownTeam.name === undefined) d.ownTeam.name = '';
+  if (d.ownTeam.logo === undefined) d.ownTeam.logo = null;
   d.players.forEach(p => { if (p.photo === undefined) p.photo = null; });
   d.teams.forEach(t => { if (t.logo === undefined) t.logo = null; });
   d.games.forEach(g => {
@@ -840,8 +843,12 @@ async function loadDataFromSupabase() {
   }));
 
   const activeGameId = stateRes.data ? stateRes.data.active_game_id : null;
+  const ownTeam = {
+    name: (stateRes.data && stateRes.data.team_name) || '',
+    logo: (stateRes.data && stateRes.data.team_logo) || null
+  };
 
-  return { players, games, competitions, teams, activeGameId };
+  return { players, games, competitions, teams, ownTeam, activeGameId };
 }
 
 function saveData(d) {
@@ -889,7 +896,12 @@ async function syncToSupabase(d) {
       sb.from('games').upsert(games, { onConflict: 'id' }),
       sb.from('competitions').upsert(competitions, { onConflict: 'id' }),
       sb.from('teams').upsert(teams, { onConflict: 'id' }),
-      sb.from('app_state').upsert({ id: 1, active_game_id: d.activeGameId }, { onConflict: 'id' })
+      sb.from('app_state').upsert({
+        id: 1,
+        active_game_id: d.activeGameId,
+        team_name: d.ownTeam.name,
+        team_logo: d.ownTeam.logo
+      }, { onConflict: 'id' })
     ]);
 
     // Handle deletions: remove rows that are no longer in the data
@@ -945,10 +957,10 @@ let teamLogoDraft = null; // logo dataURL being edited in the New/Edit Team moda
 const COMPETITION_CATEGORIES = ['Tournament', 'Showcase', 'Friendly', 'Cup', 'League'];
 
 // ── Navigation ──
-// URL hash routing — #/game, #/games, #/games/<id>, #/stats, #/roster, #/settings.
+// URL hash routing — #/game, #/games, #/games/<id>, #/stats, #/team, #/settings.
 // A hash (not a real path) works with zero server config on GitHub Pages and
 // lets a refresh or a shared link land back on the exact same screen.
-const VIEW_SLUGS = { game: 'game', history: 'games', stats: 'stats', roster: 'roster', settings: 'settings' };
+const VIEW_SLUGS = { game: 'game', history: 'games', stats: 'stats', roster: 'team', settings: 'settings' };
 const SLUG_TO_VIEW = Object.fromEntries(Object.entries(VIEW_SLUGS).map(([view, slug]) => [slug, view]));
 
 function hashFor(view, subId) {
@@ -1146,6 +1158,22 @@ function resizeAndStorePhoto(playerId, file) {
       openPlayerProfile(playerId);
     }
   });
+}
+
+// ── Own team identity (name + logo shown at the top of the Team tab) ──
+function handleOwnTeamLogoPick(file) {
+  if (!file) return;
+  resizeImageToDataURL(file, 200, (dataUrl) => {
+    data.ownTeam.logo = dataUrl;
+    saveData(data);
+    render();
+  });
+}
+
+function updateOwnTeamName(value) {
+  data.ownTeam.name = value.trim();
+  saveData(data);
+  render();
 }
 
 // ── Roster ──
@@ -1676,7 +1704,7 @@ function renderGame() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         <h3>No active game</h3>
         <p>${admin ? (data.players.length === 0 ? 'Add players to your roster first, then start a game.' : 'Start a new game to begin tracking stats.') : 'Check back once a game is underway.'}</p>
-        ${admin ? (data.players.length > 0 ? `<button class="btn" onclick="openNewGameModal()">Start Game</button>` : `<button class="btn" onclick="goToView('roster')">Set Up Roster</button>`) : ''}
+        ${admin ? (data.players.length > 0 ? `<button class="btn" onclick="openNewGameModal()">Start Game</button>` : `<button class="btn" onclick="goToView('roster')">Set Up Team</button>`) : ''}
       </div>`;
     return;
   }
@@ -1750,7 +1778,7 @@ function renderGame() {
     </div>
     <div class="game-status">
       <div class="game-clock">${formatDate(game.date)}</div>
-      <div class="game-opponent">vs ${opponentName(game)}</div>
+      <div class="game-opponent" style="display:flex;align-items:center;justify-content:center;gap:0.4rem">${opponentLogoHTML(game, 18)}vs ${opponentName(game)}</div>
       ${cat ? `<div><span class="category-badge">${cat.name}</span></div>` : ''}
       <div class="game-score">${formatScore(game)}</div>
       <div style="margin-top:0.5rem;display:flex;align-items:center;justify-content:center;gap:0.75rem">
@@ -1779,8 +1807,25 @@ function renderRoster() {
     </div>`;
   }).join('');
 
+  const showOwnTeamCard = admin || data.ownTeam.name || data.ownTeam.logo;
+  const ownTeamCard = showOwnTeamCard ? `<div class="card" style="display:flex;align-items:center;gap:1rem">
+      <div class="profile-photo-wrap" style="margin-bottom:0;flex-shrink:0${admin ? '' : ';cursor:default'}"${admin ? ` onclick="document.getElementById('own-team-logo-input').click()"` : ''}>
+        ${data.ownTeam.logo
+          ? `<img src="${data.ownTeam.logo}" class="profile-photo" alt="${data.ownTeam.name || 'Team'}">`
+          : `<div class="profile-initials">${shieldIconSVG(32)}</div>`}
+      </div>
+      ${admin ? `<input type="file" id="own-team-logo-input" accept="image/*" style="display:none" onchange="handleOwnTeamLogoPick(this.files[0])">` : ''}
+      <div style="flex:1;min-width:0">
+        <label style="margin-bottom:0.3rem">Team Name</label>
+        ${admin
+          ? `<input class="input" id="own-team-name" value="${data.ownTeam.name || ''}" placeholder="e.g. Rainier FC" onchange="updateOwnTeamName(this.value)">`
+          : `<div style="font-weight:700;font-size:1.05rem">${data.ownTeam.name || 'Unnamed Team'}</div>`}
+      </div>
+    </div>` : '';
+
   el.innerHTML = `
-    <div class="view-header"><h1>Roster</h1></div>
+    <div class="view-header"><h1>Team</h1></div>
+    ${ownTeamCard}
     ${admin ? `<div class="card">
       <label>Add Player</label>
       <div class="form-row">
