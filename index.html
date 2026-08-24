@@ -1024,6 +1024,17 @@ function playerLabel(id) {
   return p.number ? `#${p.number} ${p.name}` : p.name;
 }
 
+// Same as playerLabel but without the jersey number — used on the game
+// detail page, where numbers are omitted from the Player Stats and Goal Log.
+function playerNameOnly(id) {
+  if (id === OWN_GOAL_ID) return 'Own Goal';
+  if (id === PENALTY_KICK_ID) return 'Penalty Kick';
+  if (id === FREE_KICK_ID) return 'Free Kick';
+  const p = getPlayer(id);
+  if (!p) return 'Unknown';
+  return p.name;
+}
+
 function playerShort(id) {
   if (id === OWN_GOAL_ID) return 'OG';
   const p = getPlayer(id);
@@ -1915,7 +1926,7 @@ function renderHistory() {
     return `<div class="card game-card" onclick="goToGame('${g.id}')">
       <div class="game-card-date">${formatDate(g.date)}</div>
       <div class="game-card-row">
-        <span class="game-card-opponent" style="display:inline-flex;align-items:center;gap:0.4rem">${opponentLogoHTML(g, 20)}vs ${opponentName(g)}</span>
+        <span class="game-card-opponent" style="display:inline-flex;align-items:center;gap:0.4rem">${opponentLogoHTML(g, 20)}${opponentName(g)}</span>
         <span class="game-card-score" style="color:${g.events.length < g.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(g)}</span>
       </div>
       ${cat || topScorers ? `<div class="game-card-row">
@@ -1962,15 +1973,15 @@ function renderGameDetail(el) {
 
   const rows = Object.entries(stats)
     .sort((a, b) => (b[1].goals + b[1].assists) - (a[1].goals + a[1].assists))
-    .map(([id, s]) => `<tr><td>${playerLabel(id)}</td><td>${s.goals}</td><td>${s.assists}</td><td>${s.goals + s.assists}</td></tr>`)
+    .map(([id, s]) => `<tr><td>${playerNameOnly(id)}</td><td>${s.goals}</td><td>${s.assists}</td><td>${s.goals + s.assists}</td></tr>`)
     .join('');
 
   const goalLog = game.events.map((ev, i) => `
     <div class="goal-entry">
       <div class="goal-icon">${i + 1}</div>
       <div class="goal-info">
-        <div class="goal-scorer">${playerLabel(ev.scorerId)}</div>
-        ${ev.assistId === PENALTY_KICK_ID || ev.assistId === FREE_KICK_ID ? `<div class="goal-assist">${playerLabel(ev.assistId)}</div>` : ev.assistId ? `<div class="goal-assist">Assist: ${playerLabel(ev.assistId)}</div>` : '<div class="goal-assist">Unassisted</div>'}
+        <div class="goal-scorer">${playerNameOnly(ev.scorerId)}</div>
+        ${ev.assistId === PENALTY_KICK_ID || ev.assistId === FREE_KICK_ID ? `<div class="goal-assist">${playerNameOnly(ev.assistId)}</div>` : ev.assistId ? `<div class="goal-assist">Assist: ${playerNameOnly(ev.assistId)}</div>` : '<div class="goal-assist">Unassisted</div>'}
       </div>
       ${admin ? `<button class="goal-delete" onclick="removeGoal('${game.id}','${ev.id}')">✕</button>` : ''}
     </div>
@@ -2027,7 +2038,7 @@ function renderGameDetail(el) {
     <div class="view-header" style="align-items:flex-start">
       <div>
         <div class="game-card-date">${formatDate(game.date)}</div>
-        <h1 style="display:flex;align-items:center;gap:0.5rem">${opponentLogoHTML(game, 28)}vs ${opponentName(game)}</h1>
+        <h1 style="display:flex;align-items:center;gap:0.5rem">${opponentLogoHTML(game, 28)}${opponentName(game)}</h1>
         ${cat ? `<div><span class="category-badge">${cat.name}</span></div>` : ''}
       </div>
       <span class="game-card-score" style="font-size:1.5rem;color:${game.events.length < game.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(game)}</span>
@@ -2335,12 +2346,15 @@ function createHistoricalGame() {
 }
 
 function confirmEndGame() {
+  const game = getActiveGame();
+  if (!game) return;
   openModal(`
     <h2>End Game?</h2>
     <p style="color:var(--muted);font-size:0.9rem;margin-bottom:0.5rem">This will save the game to your history. You can still edit it later.</p>
     <div class="modal-actions">
+      <button class="btn btn-danger btn-sm" onclick="if(confirm('Delete this in-progress game? All recorded goals will be lost. This cannot be undone.')){deleteGame('${game.id}');closeModal();}">Delete</button>
       <button class="btn btn-outline" onclick="closeModal()">Keep Playing</button>
-      <button class="btn btn-danger" onclick="endGame();closeModal()">End Game</button>
+      <button class="btn" onclick="endGame();closeModal()">End Game</button>
     </div>
   `);
 }
