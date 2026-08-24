@@ -1127,6 +1127,15 @@ function opponentLogoHTML(game, size) {
   return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--muted);flex-shrink:0">${shieldIconSVG(Math.round(size * 0.55))}</span>`;
 }
 
+// Your own team's logo (or the shield placeholder if none set yet) — unlike
+// opponentLogoHTML, always renders something since "our team" always exists.
+function ownTeamLogoHTML(size) {
+  if (data.ownTeam.logo) {
+    return `<img src="${data.ownTeam.logo}" alt="" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--surface2);border:1px solid var(--border)">`;
+  }
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--muted);flex-shrink:0">${shieldIconSVG(Math.round(size * 0.55))}</span>`;
+}
+
 function resizeImageToDataURL(file, size, callback) {
   const reader = new FileReader();
   reader.onload = function(e) {
@@ -1778,7 +1787,11 @@ function renderGame() {
     </div>
     <div class="game-status">
       <div class="game-clock">${formatDate(game.date)}</div>
-      <div class="game-opponent" style="display:flex;align-items:center;justify-content:center;gap:0.4rem">${opponentLogoHTML(game, 18)}vs ${opponentName(game)}</div>
+      <div class="game-opponent" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;flex-wrap:wrap">
+        <span style="display:inline-flex;align-items:center;gap:0.35rem">${ownTeamLogoHTML(18)}${data.ownTeam.name || 'Your Team'}</span>
+        <span style="opacity:0.6">vs</span>
+        <span style="display:inline-flex;align-items:center;gap:0.35rem">${opponentLogoHTML(game, 18)}${opponentName(game)}</span>
+      </div>
       ${cat ? `<div><span class="category-badge">${cat.name}</span></div>` : ''}
       <div class="game-score">${formatScore(game)}</div>
       <div style="margin-top:0.5rem;display:flex;align-items:center;justify-content:center;gap:0.75rem">
