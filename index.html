@@ -787,12 +787,15 @@ function loadDataLocal() {
   if (raw) {
     d = JSON.parse(raw);
   } else {
-    d = { players: [], games: [], competitions: [], activeGameId: null };
+    d = { players: [], games: [], competitions: [], teams: [], activeGameId: null };
   }
   if (!d.competitions) d.competitions = [];
+  if (!d.teams) d.teams = [];
   d.players.forEach(p => { if (p.photo === undefined) p.photo = null; });
+  d.teams.forEach(t => { if (t.logo === undefined) t.logo = null; });
   d.games.forEach(g => {
     if (g.competitionId === undefined) g.competitionId = null;
+    if (g.teamId === undefined) g.teamId = null;
     g.opponentGoals = g.opponentGoals || 0;
   });
   return d;
@@ -803,14 +806,15 @@ function saveDataLocal(d) {
 }
 
 async function loadDataFromSupabase() {
-  const [playersRes, gamesRes, competitionsRes, stateRes] = await Promise.all([
+  const [playersRes, gamesRes, competitionsRes, teamsRes, stateRes] = await Promise.all([
     sb.from('players').select('*'),
     sb.from('games').select('*'),
     sb.from('competitions').select('*'),
+    sb.from('teams').select('*'),
     sb.from('app_state').select('*').eq('id', 1).single()
   ]);
 
-  if (playersRes.error || gamesRes.error || competitionsRes.error) {
+  if (playersRes.error || gamesRes.error || competitionsRes.error || teamsRes.error) {
     console.warn('Supabase load failed, falling back to localStorage');
     return null;
   }
@@ -822,6 +826,7 @@ async function loadDataFromSupabase() {
   const games = (gamesRes.data || []).map(g => ({
     id: g.id, opponent: g.opponent, date: g.date,
     finished: g.finished, competitionId: g.competition_id,
+    teamId: g.team_id,
     opponentGoals: g.opponent_goals || 0,
     events: g.events || []
   }));
@@ -830,9 +835,13 @@ async function loadDataFromSupabase() {
     id: c.id, name: c.name, emoji: c.emoji, categoryType: c.category_type
   }));
 
+  const teams = (teamsRes.data || []).map(t => ({
+    id: t.id, name: t.name, logo: t.logo
+  }));
+
   const activeGameId = stateRes.data ? stateRes.data.active_game_id : null;
 
-  return { players, games, competitions, activeGameId };
+  return { players, games, competitions, teams, activeGameId };
 }
 
 function saveData(d) {
@@ -864,17 +873,22 @@ async function syncToSupabase(d) {
     const games = d.games.map(g => ({
       id: g.id, opponent: g.opponent, date: g.date,
       finished: g.finished, competition_id: g.competitionId,
+      team_id: g.teamId,
       opponent_goals: g.opponentGoals || 0,
       events: g.events || []
     }));
     const competitions = d.competitions.map(c => ({
       id: c.id, name: c.name, emoji: c.emoji, category_type: c.categoryType
     }));
+    const teams = d.teams.map(t => ({
+      id: t.id, name: t.name, logo: t.logo
+    }));
 
     await Promise.all([
       sb.from('players').upsert(players, { onConflict: 'id' }),
       sb.from('games').upsert(games, { onConflict: 'id' }),
       sb.from('competitions').upsert(competitions, { onConflict: 'id' }),
+      sb.from('teams').upsert(teams, { onConflict: 'id' }),
       sb.from('app_state').upsert({ id: 1, active_game_id: d.activeGameId }, { onConflict: 'id' })
     ]);
 
@@ -882,6 +896,7 @@ async function syncToSupabase(d) {
     const playerIds = d.players.map(p => p.id);
     const gameIds = d.games.map(g => g.id);
     const compIds = d.competitions.map(c => c.id);
+    const teamIds = d.teams.map(t => t.id);
 
     const deletes = [];
     if (playerIds.length > 0) {
@@ -898,6 +913,11 @@ async function syncToSupabase(d) {
       deletes.push(sb.from('competitions').delete().not('id', 'in', '(' + compIds.join(',') + ')'));
     } else {
       deletes.push(sb.from('competitions').delete().neq('id', ''));
+    }
+    if (teamIds.length > 0) {
+      deletes.push(sb.from('teams').delete().not('id', 'in', '(' + teamIds.join(',') + ')'));
+    } else {
+      deletes.push(sb.from('teams').delete().neq('id', ''));
     }
     await Promise.all(deletes);
 
@@ -919,6 +939,8 @@ let sortDir = -1;
 let viewingGameId = null;
 let statsCompetitionFilter = null;
 let gamesCompetitionFilter = null;
+let modalReturnStash = null; // remembers which game modal to reopen after an inline "+ Add new…" flow
+let teamLogoDraft = null; // logo dataURL being edited in the New/Edit Team modal, before save
 
 const COMPETITION_CATEGORIES = ['Tournament', 'Showcase', 'Friendly', 'Cup', 'League'];
 
@@ -971,6 +993,9 @@ function openModal(html) {
 
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('open');
+  // A backdrop click bypasses the inline "+ Add new…" cancel path — clear any
+  // stashed game-modal state so it can't leak into an unrelated later modal.
+  modalReturnStash = null;
 }
 
 // ── Helpers ──
@@ -1057,32 +1082,70 @@ function getCompetitionById(id) {
   return data.competitions.find(c => c.id === id);
 }
 
-function resizeAndStorePhoto(playerId, file) {
+function getTeamById(id) {
+  return data.teams.find(t => t.id === id);
+}
+
+// Resolves a game's opponent display name: prefers the linked team (so a
+// rename shows up everywhere), falls back to a legacy free-text opponent
+// string (pre-teams games) or a deleted team's last-known name.
+function opponentName(game) {
+  if (game.teamId) {
+    const team = getTeamById(game.teamId);
+    if (team) return team.name;
+  }
+  return game.opponent || 'Unknown Opponent';
+}
+
+// Outline shield glyph, styled like the tab-bar icons (stroke-based,
+// currentColor) — used as the placeholder for a team with no logo uploaded.
+function shieldIconSVG(size) {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:${size}px;height:${size}px;flex-shrink:0"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`;
+}
+
+// A team's logo (or the shield placeholder if it has none), sized for
+// inline use next to an opponent name. Returns '' when the game has no
+// linked team (legacy free-text opponent) — nothing to show a logo for.
+function opponentLogoHTML(game, size) {
+  const team = game.teamId ? getTeamById(game.teamId) : null;
+  if (!team) return '';
+  if (team.logo) {
+    return `<img src="${team.logo}" alt="" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--surface2);border:1px solid var(--border)">`;
+  }
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--muted);flex-shrink:0">${shieldIconSVG(Math.round(size * 0.55))}</span>`;
+}
+
+function resizeImageToDataURL(file, size, callback) {
   const reader = new FileReader();
   reader.onload = function(e) {
     const img = new Image();
     img.onload = function() {
       const canvas = document.createElement('canvas');
-      canvas.width = 200;
-      canvas.height = 200;
+      canvas.width = size;
+      canvas.height = size;
       const ctx = canvas.getContext('2d');
       // Crop to square center
       const minDim = Math.min(img.width, img.height);
       const sx = (img.width - minDim) / 2;
       const sy = (img.height - minDim) / 2;
-      ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, 200, 200);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-      const player = getPlayer(playerId);
-      if (player) {
-        player.photo = dataUrl;
-        saveData(data);
-        // Re-render the profile modal if open
-        openPlayerProfile(playerId);
-      }
+      ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+      callback(canvas.toDataURL('image/jpeg', 0.7));
     };
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+function resizeAndStorePhoto(playerId, file) {
+  resizeImageToDataURL(file, 200, (dataUrl) => {
+    const player = getPlayer(playerId);
+    if (player) {
+      player.photo = dataUrl;
+      saveData(data);
+      // Re-render the profile modal if open
+      openPlayerProfile(playerId);
+    }
+  });
 }
 
 // ── Roster ──
@@ -1128,7 +1191,7 @@ function openPlayerProfile(playerId) {
       return `<div class="profile-game-entry">
         <div>
           <div class="pge-date">${formatDate(g.date)}</div>
-          <div class="pge-opp">vs ${g.opponent}</div>
+          <div class="pge-opp">vs ${opponentName(g)}</div>
           ${cat ? `<div><span class="category-badge">${cat.name}</span></div>` : ''}
         </div>
         <div class="pge-stats">${gGoals}G ${gAssists}A</div>
@@ -1193,12 +1256,12 @@ function confirmDeletePlayer(playerId) {
 
 // ── Game management ──
 function startGame() {
-  const opponent = document.getElementById('game-opponent').value.trim() || 'Unknown';
-  const compSelect = document.getElementById('game-competition');
-  const competitionId = compSelect ? (compSelect.value || null) : null;
+  const teamId = sanitizePickerValue(document.getElementById('game-team')?.value);
+  const competitionId = sanitizePickerValue(document.getElementById('game-competition')?.value);
   const game = {
     id: Date.now().toString(),
-    opponent,
+    teamId,
+    opponent: null,
     date: new Date().toISOString(),
     events: [],
     finished: false,
@@ -1307,9 +1370,10 @@ function addCompetition() {
   const name = nameEl.value.trim();
   const categoryType = catEl.value;
   if (!name) return;
-  data.competitions.push({ id: Date.now().toString(), name, categoryType });
+  const comp = { id: Date.now().toString(), name, categoryType };
+  data.competitions.push(comp);
   saveData(data);
-  closeModal();
+  returnFromInlineAddModal({ competitionId: comp.id });
   render();
 }
 
@@ -1347,7 +1411,7 @@ function openAddCompetitionModal() {
       <select class="input" id="comp-category-type">${competitionCategoryOptionsHTML(COMPETITION_CATEGORIES[0])}</select>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-outline" onclick="cancelInlineAddModal()">Cancel</button>
       <button class="btn" onclick="addCompetition()">Add</button>
     </div>
   `);
@@ -1384,6 +1448,200 @@ function filterStatsByCompetition(catId) {
 function filterGamesByCompetition(catId) {
   gamesCompetitionFilter = catId;
   render();
+}
+
+// ── Team CRUD ──
+function addTeam() {
+  const nameEl = document.getElementById('team-name');
+  const name = nameEl.value.trim();
+  if (!name) return;
+  const team = { id: Date.now().toString(), name, logo: teamLogoDraft };
+  data.teams.push(team);
+  saveData(data);
+  teamLogoDraft = null;
+  returnFromInlineAddModal({ teamId: team.id });
+  render();
+}
+
+function updateTeam(teamId) {
+  const team = getTeamById(teamId);
+  if (!team) return;
+  const name = document.getElementById('team-name').value.trim();
+  if (!name) return;
+  team.name = name;
+  team.logo = teamLogoDraft;
+  saveData(data);
+  teamLogoDraft = null;
+  closeModal();
+  render();
+}
+
+function deleteTeam(teamId) {
+  const team = getTeamById(teamId);
+  data.teams = data.teams.filter(t => t.id !== teamId);
+  // Orphaned games keep showing the team's last-known name (same treatment
+  // deleted players get in old game logs) instead of going blank.
+  data.games.forEach(g => {
+    if (g.teamId === teamId) {
+      g.opponent = team ? team.name : g.opponent;
+      g.teamId = null;
+    }
+  });
+  saveData(data);
+  closeModal();
+  render();
+}
+
+function handleTeamLogoPick(file) {
+  if (!file) return;
+  resizeImageToDataURL(file, 200, (dataUrl) => {
+    teamLogoDraft = dataUrl;
+    updateTeamLogoPreview();
+  });
+}
+
+function updateTeamLogoPreview() {
+  const img = document.getElementById('team-logo-preview');
+  const placeholder = document.getElementById('team-logo-placeholder');
+  if (!img) return;
+  if (teamLogoDraft) {
+    img.src = teamLogoDraft;
+    img.style.display = '';
+    if (placeholder) placeholder.style.display = 'none';
+  } else {
+    img.style.display = 'none';
+    if (placeholder) placeholder.style.display = '';
+  }
+}
+
+function teamLogoPickerHTML() {
+  return `
+    <div class="profile-photo-wrap" onclick="document.getElementById('team-logo-input').click()">
+      <img id="team-logo-preview" src="${teamLogoDraft || ''}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;background:var(--surface2);border:3px solid var(--border);${teamLogoDraft ? '' : 'display:none'}">
+      <div id="team-logo-placeholder" class="profile-initials" style="width:80px;height:80px;${teamLogoDraft ? 'display:none' : ''}">${shieldIconSVG(32)}</div>
+    </div>
+    <div class="profile-photo-label">Tap to ${teamLogoDraft ? 'change' : 'add'} logo</div>
+    <input type="file" id="team-logo-input" accept="image/*" style="display:none" onchange="handleTeamLogoPick(this.files[0])">
+  `;
+}
+
+function openAddTeamModal() {
+  teamLogoDraft = null;
+  openModal(`
+    <h2>New Team</h2>
+    ${teamLogoPickerHTML()}
+    <div class="form-group">
+      <label>Name</label>
+      <input class="input" id="team-name" placeholder="e.g. Rainier FC" onkeydown="if(event.key==='Enter')addTeam()">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="cancelInlineAddModal()">Cancel</button>
+      <button class="btn" onclick="addTeam()">Add</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('team-name')?.focus(), 100);
+}
+
+function openEditTeamModal(teamId) {
+  const team = getTeamById(teamId);
+  if (!team) return;
+  teamLogoDraft = team.logo;
+  openModal(`
+    <h2>Edit Team</h2>
+    ${teamLogoPickerHTML()}
+    <div class="form-group">
+      <label>Name</label>
+      <input class="input" id="team-name" value="${team.name}">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger btn-sm" onclick="if(confirm('Delete this team?'))deleteTeam('${teamId}')">Delete</button>
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="updateTeam('${teamId}')">Save</button>
+    </div>
+  `);
+}
+
+// ── Inline "+ Add new…" pickers (Team & Competition, used from game modals) ──
+// A select's "+ Add new…" option stashes the in-progress game modal's field
+// values, opens the Add Team/Competition modal on top, then reopens the
+// original modal (with the new item pre-selected) once it's saved or cancelled.
+function sanitizePickerValue(v) {
+  return (!v || v === '__add_team__' || v === '__add_comp__') ? null : v;
+}
+
+function captureGameModalValues(type, gameId) {
+  if (type === 'newGame') {
+    return { type, values: {
+      teamId: sanitizePickerValue(document.getElementById('game-team')?.value),
+      competitionId: sanitizePickerValue(document.getElementById('game-competition')?.value)
+    }};
+  }
+  if (type === 'editGame') {
+    return { type, gameId, values: {
+      teamId: sanitizePickerValue(document.getElementById('edit-game-team')?.value),
+      dateStr: document.getElementById('edit-game-date')?.value || null,
+      competitionId: sanitizePickerValue(document.getElementById('edit-game-competition')?.value),
+      oppGoals: document.getElementById('edit-game-opp-goals')?.value ?? null
+    }};
+  }
+  if (type === 'histGame') {
+    return { type, values: {
+      teamId: sanitizePickerValue(document.getElementById('hist-game-team')?.value),
+      dateStr: document.getElementById('hist-game-date')?.value || null,
+      competitionId: sanitizePickerValue(document.getElementById('hist-game-competition')?.value),
+      oppGoals: document.getElementById('hist-game-opp-goals')?.value ?? null
+    }};
+  }
+  return null;
+}
+
+function reopenStashedModal(stash, overrides) {
+  const values = { ...stash.values, ...(overrides || {}) };
+  if (stash.type === 'newGame') openNewGameModal(values);
+  else if (stash.type === 'editGame') openEditGameModal(stash.gameId, values);
+  else if (stash.type === 'histGame') openAddHistoricalGameModal(values);
+}
+
+function returnFromInlineAddModal(overrides) {
+  const stash = modalReturnStash;
+  modalReturnStash = null;
+  if (stash) reopenStashedModal(stash, overrides);
+  else closeModal();
+}
+
+function cancelInlineAddModal() {
+  teamLogoDraft = null;
+  returnFromInlineAddModal();
+}
+
+function onGameTeamPickerChange(selectEl, type, gameId) {
+  if (selectEl.value !== '__add_team__') return;
+  modalReturnStash = captureGameModalValues(type, gameId);
+  openAddTeamModal();
+}
+
+function onGameCompetitionPickerChange(selectEl, type, gameId) {
+  if (selectEl.value !== '__add_comp__') return;
+  modalReturnStash = captureGameModalValues(type, gameId);
+  openAddCompetitionModal();
+}
+
+function teamPickerOptionsHTML(selectedId) {
+  const opts = data.teams
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(t => `<option value="${t.id}"${t.id === selectedId ? ' selected' : ''}>${t.name}</option>`)
+    .join('');
+  const addNew = isAdmin() ? `<option value="__add_team__">+ Add new team…</option>` : '';
+  return `<option value="">None</option>${opts}${addNew}`;
+}
+
+function competitionPickerOptionsHTML(selectedId) {
+  const opts = data.competitions
+    .map(c => `<option value="${c.id}"${c.id === selectedId ? ' selected' : ''}>${c.name}</option>`)
+    .join('');
+  const addNew = isAdmin() ? `<option value="__add_comp__">+ Add new competition…</option>` : '';
+  return `<option value="">None</option>${opts}${addNew}`;
 }
 
 // ── Render ──
@@ -1492,7 +1750,7 @@ function renderGame() {
     </div>
     <div class="game-status">
       <div class="game-clock">${formatDate(game.date)}</div>
-      <div class="game-opponent">vs ${game.opponent}</div>
+      <div class="game-opponent">vs ${opponentName(game)}</div>
       ${cat ? `<div><span class="category-badge">${cat.name}</span></div>` : ''}
       <div class="game-score">${formatScore(game)}</div>
       <div style="margin-top:0.5rem;display:flex;align-items:center;justify-content:center;gap:0.75rem">
@@ -1599,7 +1857,7 @@ function renderHistory() {
     return `<div class="card game-card" onclick="goToGame('${g.id}')">
       <div class="game-card-date">${formatDate(g.date)}</div>
       <div class="game-card-row">
-        <span class="game-card-opponent">vs ${g.opponent}</span>
+        <span class="game-card-opponent" style="display:inline-flex;align-items:center;gap:0.4rem">${opponentLogoHTML(g, 20)}vs ${opponentName(g)}</span>
         <span class="game-card-score" style="color:${g.events.length < g.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(g)}</span>
       </div>
       ${cat || topScorers ? `<div class="game-card-row">
@@ -1711,7 +1969,7 @@ function renderGameDetail(el) {
     <div class="view-header" style="align-items:flex-start">
       <div>
         <div class="game-card-date">${formatDate(game.date)}</div>
-        <h1>vs ${game.opponent}</h1>
+        <h1 style="display:flex;align-items:center;gap:0.5rem">${opponentLogoHTML(game, 28)}vs ${opponentName(game)}</h1>
         ${cat ? `<div><span class="category-badge">${cat.name}</span></div>` : ''}
       </div>
       <span class="game-card-score" style="font-size:1.5rem;color:${game.events.length < game.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(game)}</span>
@@ -1851,8 +2109,24 @@ function renderSettings() {
     </div>
   `).join('');
 
+  const teamItems = data.teams.map(t => `
+    <div class="settings-item">
+      <div class="settings-item-left" onclick="openEditTeamModal('${t.id}')">
+        ${t.logo ? `<img src="${t.logo}" alt="${t.name}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--surface2);border:1px solid var(--border)">` : `<span class="settings-item-emoji">${shieldIconSVG(18)}</span>`}
+        <span class="settings-item-name">${t.name}</span>
+      </div>
+    </div>
+  `).join('');
+
   el.innerHTML = `
     <div class="view-header"><h1>Settings</h1></div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+        <label style="margin-bottom:0">Teams</label>
+        <button class="btn btn-sm" onclick="openAddTeamModal()">+ Add</button>
+      </div>
+      ${teamItems || '<div style="color:var(--muted);font-size:0.85rem;padding:0.5rem 0">No teams yet. Add opponents here to pick them when starting a game.</div>'}
+    </div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
         <label style="margin-bottom:0">Competitions</label>
@@ -1882,39 +2156,38 @@ function renderSettings() {
 }
 
 // ── Modals ──
-function openNewGameModal() {
-  const compOptions = data.competitions.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  const compSelect = data.competitions.length > 0
-    ? `<div class="form-group"><label>Competition</label><select class="input" id="game-competition"><option value="">None</option>${compOptions}</select></div>`
-    : '';
-
+function openNewGameModal(prefill) {
+  prefill = prefill || {};
   openModal(`
     <h2>New Game</h2>
     <div class="form-group">
       <label>Opponent</label>
-      <input class="input" id="game-opponent" placeholder="e.g. Eagles" onkeydown="if(event.key==='Enter')startGame()">
+      <select class="input" id="game-team" onchange="onGameTeamPickerChange(this,'newGame')">${teamPickerOptionsHTML(prefill.teamId ?? null)}</select>
     </div>
-    ${compSelect}
+    <div class="form-group">
+      <label>Competition</label>
+      <select class="input" id="game-competition" onchange="onGameCompetitionPickerChange(this,'newGame')">${competitionPickerOptionsHTML(prefill.competitionId ?? null)}</select>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
       <button class="btn" onclick="startGame()">Start Game</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('game-opponent')?.focus(), 100);
 }
 
-function openEditGameModal(gameId) {
+function openEditGameModal(gameId, prefill) {
   const game = data.games.find(g => g.id === gameId);
   if (!game) return;
-  const dateVal = new Date(game.date).toISOString().split('T')[0];
-  const compOptions = data.competitions.map(c =>
-    `<option value="${c.id}"${game.competitionId === c.id ? ' selected' : ''}>${c.name}</option>`
-  ).join('');
+  prefill = prefill || {};
+  const dateVal = prefill.dateStr || new Date(game.date).toISOString().split('T')[0];
+  const teamId = prefill.teamId !== undefined ? prefill.teamId : game.teamId;
+  const competitionId = prefill.competitionId !== undefined ? prefill.competitionId : game.competitionId;
+  const oppGoals = prefill.oppGoals !== undefined && prefill.oppGoals !== null ? prefill.oppGoals : game.opponentGoals;
   openModal(`
     <h2>Edit Game</h2>
     <div class="form-group">
       <label>Opponent</label>
-      <input class="input" id="edit-game-opponent" value="${game.opponent}">
+      <select class="input" id="edit-game-team" onchange="onGameTeamPickerChange(this,'editGame','${gameId}')">${teamPickerOptionsHTML(teamId)}</select>
     </div>
     <div class="form-group">
       <label>Date</label>
@@ -1922,14 +2195,11 @@ function openEditGameModal(gameId) {
     </div>
     <div class="form-group">
       <label>Competition</label>
-      <select class="input" id="edit-game-competition">
-        <option value="">None</option>
-        ${compOptions}
-      </select>
+      <select class="input" id="edit-game-competition" onchange="onGameCompetitionPickerChange(this,'editGame','${gameId}')">${competitionPickerOptionsHTML(competitionId)}</select>
     </div>
     <div class="form-group">
       <label>Opponent Goals</label>
-      <input type="number" class="input" id="edit-game-opp-goals" value="${game.opponentGoals}" min="0" style="max-width:100px">
+      <input type="number" class="input" id="edit-game-opp-goals" value="${oppGoals}" min="0" style="max-width:100px">
     </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -1941,11 +2211,11 @@ function openEditGameModal(gameId) {
 function saveGameEdits(gameId) {
   const game = data.games.find(g => g.id === gameId);
   if (!game) return;
-  const opponent = document.getElementById('edit-game-opponent').value.trim() || 'Unknown';
+  const teamId = sanitizePickerValue(document.getElementById('edit-game-team')?.value);
   const dateStr = document.getElementById('edit-game-date').value;
-  const competitionId = document.getElementById('edit-game-competition').value || null;
+  const competitionId = sanitizePickerValue(document.getElementById('edit-game-competition')?.value);
   const oppGoals = parseInt(document.getElementById('edit-game-opp-goals').value) || 0;
-  game.opponent = opponent;
+  game.teamId = teamId;
   if (dateStr) game.date = new Date(dateStr + 'T12:00:00').toISOString();
   game.competitionId = competitionId;
   game.opponentGoals = Math.max(0, oppGoals);
@@ -1954,46 +2224,45 @@ function saveGameEdits(gameId) {
   render();
 }
 
-function openAddHistoricalGameModal() {
+function openAddHistoricalGameModal(prefill) {
+  prefill = prefill || {};
   const today = new Date().toISOString().split('T')[0];
-  const compOptions = data.competitions.map(c =>
-    `<option value="${c.id}">${c.name}</option>`
-  ).join('');
-  const compSelect = data.competitions.length > 0
-    ? `<div class="form-group"><label>Competition</label><select class="input" id="hist-game-competition"><option value="">None</option>${compOptions}</select></div>`
-    : '';
+  const dateVal = prefill.dateStr || today;
+  const oppGoals = prefill.oppGoals !== undefined && prefill.oppGoals !== null ? prefill.oppGoals : 0;
   openModal(`
     <h2>Add Past Game</h2>
     <div class="form-group">
       <label>Opponent</label>
-      <input class="input" id="hist-game-opponent" placeholder="e.g. Eagles">
+      <select class="input" id="hist-game-team" onchange="onGameTeamPickerChange(this,'histGame')">${teamPickerOptionsHTML(prefill.teamId ?? null)}</select>
     </div>
     <div class="form-group">
       <label>Date</label>
-      <input type="date" class="input" id="hist-game-date" value="${today}">
+      <input type="date" class="input" id="hist-game-date" value="${dateVal}">
     </div>
-    ${compSelect}
+    <div class="form-group">
+      <label>Competition</label>
+      <select class="input" id="hist-game-competition" onchange="onGameCompetitionPickerChange(this,'histGame')">${competitionPickerOptionsHTML(prefill.competitionId ?? null)}</select>
+    </div>
     <div class="form-group">
       <label>Opponent Goals</label>
-      <input type="number" class="input" id="hist-game-opp-goals" value="0" min="0" style="max-width:100px">
+      <input type="number" class="input" id="hist-game-opp-goals" value="${oppGoals}" min="0" style="max-width:100px">
     </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
       <button class="btn" onclick="createHistoricalGame()">Create</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('hist-game-opponent')?.focus(), 100);
 }
 
 function createHistoricalGame() {
-  const opponent = document.getElementById('hist-game-opponent').value.trim() || 'Unknown';
+  const teamId = sanitizePickerValue(document.getElementById('hist-game-team')?.value);
   const dateStr = document.getElementById('hist-game-date').value;
-  const compEl = document.getElementById('hist-game-competition');
-  const competitionId = compEl ? (compEl.value || null) : null;
+  const competitionId = sanitizePickerValue(document.getElementById('hist-game-competition')?.value);
   const oppGoals = parseInt(document.getElementById('hist-game-opp-goals').value) || 0;
   const game = {
     id: Date.now().toString(),
-    opponent,
+    teamId,
+    opponent: null,
     date: dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString(),
     events: [],
     finished: true,
