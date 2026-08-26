@@ -906,7 +906,7 @@ async function syncToSupabase(d) {
       id: t.id, name: t.name, logo: t.logo
     }));
 
-    await Promise.all([
+    const results = await Promise.all([
       sb.from('players').upsert(players, { onConflict: 'id' }),
       sb.from('games').upsert(games, { onConflict: 'id' }),
       sb.from('competitions').upsert(competitions, { onConflict: 'id' }),
@@ -918,6 +918,21 @@ async function syncToSupabase(d) {
         team_logo: d.ownTeam.logo
       }, { onConflict: 'id' })
     ]);
+
+    // supabase-js resolves (rather than rejects) on a write that Postgres
+    // rejects — it just comes back as { error }. Without checking this, a
+    // partial write (e.g. one table's upsert failing a constraint) fails
+    // completely silently: other devices just never see the change, with no
+    // error anywhere. Surface it loudly instead.
+    const tableNames = ['players', 'games', 'competitions', 'teams', 'app_state'];
+    const failures = results
+      .map((r, i) => ({ table: tableNames[i], error: r && r.error }))
+      .filter(f => f.error);
+    if (failures.length > 0) {
+      const msg = failures.map(f => `${f.table}: ${f.error.message}`).join('\n');
+      console.error('Supabase sync had errors:', failures);
+      alert(`Some changes failed to save and won't show up on other devices:\n\n${msg}`);
+    }
 
     // NOTE: we deliberately do NOT diff-delete rows here (i.e. "delete anything
     // remote that isn't in d.*"). Deletions are handled explicitly at the call
