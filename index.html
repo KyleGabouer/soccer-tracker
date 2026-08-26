@@ -1146,6 +1146,20 @@ function formatClock(totalSeconds) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+// The minute a goal happened, in the scoring log's yellow circle: "23" for a
+// goal at 23:45, or "30+2" for a goal at 32:45 in a 30-minute half (past that
+// half's own boundary — halfLengthMinutes * half — it switches to stoppage
+// notation instead of just continuing to count up). Falls back to a dash for
+// goals recorded before this was tracked.
+function formatGoalMinute(ev, game) {
+  if (ev.clockSeconds === undefined || ev.clockSeconds === null) return '–';
+  const minute = Math.floor(ev.clockSeconds / 60);
+  const half = ev.half || 1;
+  const halfLengthMinutes = (game.clock && game.clock.halfLengthMinutes) || 30;
+  const boundary = halfLengthMinutes * half;
+  return minute <= boundary ? String(minute) : `${boundary}+${minute - boundary}`;
+}
+
 function startClock() {
   const game = getActiveGame();
   if (!game || !game.clock || game.clock.running) return;
@@ -1486,7 +1500,11 @@ function recordGoal(scorerId, assistId, gameId) {
     id: Date.now().toString(),
     scorerId,
     assistId,
-    time: new Date().toISOString()
+    time: new Date().toISOString(),
+    // Snapshot of the game clock at the moment this goal was recorded, so the
+    // scoring log can show "the minute it happened" instead of a soccer ball.
+    clockSeconds: computeElapsedSeconds(game.clock),
+    half: game.clock ? game.clock.half : 1
   });
   saveData(data);
   selectionState = null;
@@ -1843,10 +1861,10 @@ function renderGame() {
 
   const goalLog = game.events.slice().reverse().map((ev, i) => `
     <div class="goal-entry">
-      <div class="goal-icon">⚽</div>
+      <div class="goal-icon"${formatGoalMinute(ev, game).length > 2 ? ' style="font-size:0.55rem"' : ''}>${formatGoalMinute(ev, game)}</div>
       <div class="goal-info">
-        <div class="goal-scorer">${playerLabel(ev.scorerId)}</div>
-        ${ev.assistId === PENALTY_KICK_ID || ev.assistId === FREE_KICK_ID ? `<div class="goal-assist">${playerLabel(ev.assistId)}</div>` : ev.assistId ? `<div class="goal-assist">Assist: ${playerLabel(ev.assistId)}</div>` : '<div class="goal-assist">Unassisted</div>'}
+        <div class="goal-scorer">${playerNameOnly(ev.scorerId)}</div>
+        ${ev.assistId === PENALTY_KICK_ID || ev.assistId === FREE_KICK_ID ? `<div class="goal-assist">${playerNameOnly(ev.assistId)}</div>` : ev.assistId ? `<div class="goal-assist">Assist: ${playerNameOnly(ev.assistId)}</div>` : '<div class="goal-assist">Unassisted</div>'}
       </div>
       ${admin ? `<button class="goal-delete" onclick="removeGoal('${game.id}','${ev.id}')">✕</button>` : ''}
     </div>
@@ -1856,14 +1874,13 @@ function renderGame() {
   let clockControls = '';
   if (admin) {
     if (!clock.running && clock.accumulatedSeconds === 0 && clock.half === 1) {
-      clockControls = `<button class="btn btn-sm btn-outline" onclick="startClock()">Start Clock</button>`;
+      clockControls = `<button class="btn btn-sm btn-outline" onclick="startClock()">Start Game</button>`;
     } else if (clock.running && clock.half === 1) {
-      clockControls = `<button class="btn btn-sm btn-outline" onclick="endHalf()">End 1st Half</button>`;
+      clockControls = `<button class="btn btn-sm btn-outline" onclick="endHalf()">End Half</button>`;
     } else if (!clock.running && clock.half === 1 && clock.accumulatedSeconds > 0) {
-      clockControls = `<button class="btn btn-sm btn-outline" onclick="startSecondHalf()">Start 2nd Half</button>`;
+      clockControls = `<button class="btn btn-sm btn-outline" onclick="startSecondHalf()">Resume Game</button>`;
     }
   }
-  const halfLabel = clock.half === 2 ? '2nd Half' : (clock.running || clock.accumulatedSeconds > 0 ? '1st Half' : '');
 
   const oppGoalsControls = admin ? `
         <button class="btn btn-sm btn-outline" onclick="incrementOpponentGoals(-1)" style="padding:0.3rem 0.6rem;font-size:1rem;line-height:1">−</button>
@@ -1917,14 +1934,12 @@ function renderGame() {
   el.innerHTML = `
     <div class="view-header">
       <h1>Live Game</h1>
-      ${admin ? `<button class="btn btn-sm btn-danger" onclick="confirmEndGame()">End Game</button>` : ''}
+      <div style="display:flex;gap:0.5rem">
+        ${clockControls}
+        ${admin ? `<button class="btn btn-sm btn-danger" onclick="confirmEndGame()">End Game</button>` : ''}
+      </div>
     </div>
     <div class="game-status">
-      <div class="game-clock">
-        <span id="game-clock-time">${formatClock(computeElapsedSeconds(clock))}</span>
-        ${halfLabel ? ` <span style="opacity:0.6;font-size:0.8em">${halfLabel}</span>` : ''}
-        ${clockControls ? ' ' + clockControls : ''}
-      </div>
       <div style="font-size:0.75rem;color:var(--muted)">${formatDate(game.date)}</div>
       <div class="game-opponent" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;flex-wrap:wrap">
         <span style="display:inline-flex;align-items:center;gap:0.35rem">${ownTeamLogoHTML(18)}${data.ownTeam.name || 'Your Team'}</span>
@@ -1933,13 +1948,14 @@ function renderGame() {
       </div>
       ${cat ? `<div><span class="category-badge">${cat.name}</span></div>` : ''}
       <div class="game-score">${formatScore(game)}</div>
+      <div class="game-clock"><span id="game-clock-time">${formatClock(computeElapsedSeconds(clock))}</span></div>
       <div style="margin-top:0.5rem;display:flex;align-items:center;justify-content:center;gap:0.75rem">
         <span style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Opponent Goals</span>
         ${oppGoalsControls}
       </div>
     </div>
     ${liveControls}
-    ${game.events.length > 0 ? `<div class="card goal-log"><label>Goals this game</label>${goalLog}</div>` : ''}
+    ${game.events.length > 0 ? `<div class="card goal-log"><label>Scoring</label>${goalLog}</div>` : ''}
   `;
 
   clearClockInterval();
