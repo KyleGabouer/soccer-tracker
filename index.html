@@ -800,12 +800,32 @@ function loadDataLocal() {
     if (g.competitionId === undefined) g.competitionId = null;
     if (g.teamId === undefined) g.teamId = null;
     g.opponentGoals = g.opponentGoals || 0;
+    if (!g.clock) g.clock = { halfLengthMinutes: 30, half: 1, running: false, startedAt: null, accumulatedSeconds: 0 };
   });
   return d;
 }
 
 function saveDataLocal(d) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+}
+
+// Shared row → in-memory mapping for a `games` row, used both by the initial
+// Supabase load and by the realtime change handler so both paths agree on shape.
+function mapGameRow(g) {
+  return {
+    id: g.id, opponent: g.opponent, date: g.date,
+    finished: g.finished, competitionId: g.competition_id,
+    teamId: g.team_id,
+    opponentGoals: g.opponent_goals || 0,
+    events: g.events || [],
+    clock: {
+      halfLengthMinutes: g.clock_half_length_minutes || 30,
+      half: g.clock_half || 1,
+      running: g.clock_running || false,
+      startedAt: g.clock_started_at,
+      accumulatedSeconds: g.clock_accumulated_seconds || 0
+    }
+  };
 }
 
 async function loadDataFromSupabase() {
@@ -826,13 +846,7 @@ async function loadDataFromSupabase() {
     id: p.id, name: p.name, number: p.number, photo: p.photo
   }));
 
-  const games = (gamesRes.data || []).map(g => ({
-    id: g.id, opponent: g.opponent, date: g.date,
-    finished: g.finished, competitionId: g.competition_id,
-    teamId: g.team_id,
-    opponentGoals: g.opponent_goals || 0,
-    events: g.events || []
-  }));
+  const games = (gamesRes.data || []).map(mapGameRow);
 
   const competitions = (competitionsRes.data || []).map(c => ({
     id: c.id, name: c.name, emoji: c.emoji, categoryType: c.category_type
@@ -897,7 +911,12 @@ async function syncToSupabase(d) {
       finished: g.finished, competition_id: g.competitionId,
       team_id: g.teamId,
       opponent_goals: g.opponentGoals || 0,
-      events: g.events || []
+      events: g.events || [],
+      clock_running: !!(g.clock && g.clock.running),
+      clock_started_at: g.clock ? g.clock.startedAt : null,
+      clock_accumulated_seconds: g.clock ? Math.floor(g.clock.accumulatedSeconds || 0) : 0,
+      clock_half: g.clock ? g.clock.half : 1,
+      clock_half_length_minutes: g.clock ? g.clock.halfLengthMinutes : 30
     }));
     const competitions = d.competitions.map(c => ({
       id: c.id, name: c.name, emoji: c.emoji, category_type: c.categoryType
@@ -961,6 +980,20 @@ let statsCompetitionFilter = null;
 let gamesCompetitionFilter = null;
 let modalReturnStash = null; // remembers which game modal to reopen after an inline "+ Add new…" flow
 let teamLogoDraft = null; // logo dataURL being edited in the New/Edit Team modal, before save
+
+// Drives the ticking "MM:SS" text in the live game clock. renderGame() always
+// clears and (if the clock is running) re-arms this, so it never needs to
+// second-guess whether the interval is already correct for the current state.
+let clockIntervalId = null;
+function clearClockInterval() {
+  if (clockIntervalId) { clearInterval(clockIntervalId); clockIntervalId = null; }
+}
+function tickClockDisplay() {
+  const game = getActiveGame();
+  const el = document.getElementById('game-clock-time');
+  if (!game || !game.clock || !game.clock.running || !el) { clearClockInterval(); return; }
+  el.textContent = formatClock(computeElapsedSeconds(game.clock));
+}
 
 const COMPETITION_CATEGORIES = ['Tournament', 'Showcase', 'Friendly', 'Cup', 'League'];
 
@@ -1087,6 +1120,62 @@ function incrementOpponentGoals(delta) {
   const game = getActiveGame();
   if (!game) return;
   game.opponentGoals = Math.max(0, game.opponentGoals + delta);
+  saveData(data);
+  render();
+}
+
+// ── Game clock ──
+// Count-up stopwatch, not a countdown. `accumulatedSeconds` is the value the
+// clock is counting up FROM for the current running segment; `startedAt` (if
+// running) is when that segment began. This means elapsed time can always be
+// recomputed from those two numbers alone — no per-second writes to Supabase,
+// and every device (including one that was just asleep/backgrounded) gets the
+// right answer the moment it re-renders.
+function computeElapsedSeconds(clock) {
+  if (!clock) return 0;
+  let secs = clock.accumulatedSeconds || 0;
+  if (clock.running && clock.startedAt) {
+    secs += (Date.now() - new Date(clock.startedAt).getTime()) / 1000;
+  }
+  return Math.max(0, Math.floor(secs));
+}
+
+function formatClock(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function startClock() {
+  const game = getActiveGame();
+  if (!game || !game.clock || game.clock.running) return;
+  game.clock.running = true;
+  game.clock.startedAt = new Date().toISOString();
+  saveData(data);
+  render();
+}
+
+// Freezes the clock wherever it is (e.g. 32:35 if the half ran long) —
+// admin taps this at the referee's whistle, not at the configured half length.
+function endHalf() {
+  const game = getActiveGame();
+  if (!game || !game.clock || !game.clock.running || game.clock.half !== 1) return;
+  game.clock.accumulatedSeconds = computeElapsedSeconds(game.clock);
+  game.clock.running = false;
+  game.clock.startedAt = null;
+  saveData(data);
+  render();
+}
+
+// Jumps the display to the configured half length (e.g. 30:00), discarding
+// however much stoppage time the 1st half actually ran, and resumes ticking.
+function startSecondHalf() {
+  const game = getActiveGame();
+  if (!game || !game.clock || game.clock.running || game.clock.half !== 1) return;
+  game.clock.half = 2;
+  game.clock.accumulatedSeconds = (game.clock.halfLengthMinutes || 0) * 60;
+  game.clock.running = true;
+  game.clock.startedAt = new Date().toISOString();
   saveData(data);
   render();
 }
@@ -1315,6 +1404,7 @@ function confirmDeletePlayer(playerId) {
 function startGame() {
   const teamId = sanitizePickerValue(document.getElementById('game-team')?.value);
   const competitionId = sanitizePickerValue(document.getElementById('game-competition')?.value);
+  const halfLengthMinutes = Math.max(1, parseInt(document.getElementById('game-half-length')?.value) || 30);
   const game = {
     id: Date.now().toString(),
     teamId,
@@ -1323,7 +1413,8 @@ function startGame() {
     events: [],
     finished: false,
     competitionId,
-    opponentGoals: 0
+    opponentGoals: 0,
+    clock: { halfLengthMinutes, half: 1, running: false, startedAt: null, accumulatedSeconds: 0 }
   };
   data.games.push(game);
   data.activeGameId = game.id;
@@ -1336,6 +1427,11 @@ function startGame() {
 function endGame() {
   const game = getActiveGame();
   if (!game) return;
+  if (game.clock && game.clock.running) {
+    game.clock.accumulatedSeconds = computeElapsedSeconds(game.clock);
+    game.clock.running = false;
+    game.clock.startedAt = null;
+  }
   game.finished = true;
   data.activeGameId = null;
   saveData(data);
@@ -1633,7 +1729,8 @@ function captureGameModalValues(type, gameId) {
   if (type === 'newGame') {
     return { type, values: {
       teamId: sanitizePickerValue(document.getElementById('game-team')?.value),
-      competitionId: sanitizePickerValue(document.getElementById('game-competition')?.value)
+      competitionId: sanitizePickerValue(document.getElementById('game-competition')?.value),
+      halfLengthMinutes: document.getElementById('game-half-length')?.value || null
     }};
   }
   if (type === 'editGame') {
@@ -1730,6 +1827,7 @@ function renderGame() {
   const admin = isAdmin();
 
   if (!game) {
+    clearClockInterval();
     el.innerHTML = `
       <div class="view-header"><h1>Game</h1></div>
       <div class="empty-state">
@@ -1753,6 +1851,19 @@ function renderGame() {
       ${admin ? `<button class="goal-delete" onclick="removeGoal('${game.id}','${ev.id}')">✕</button>` : ''}
     </div>
   `).join('');
+
+  const clock = game.clock || { halfLengthMinutes: 30, half: 1, running: false, startedAt: null, accumulatedSeconds: 0 };
+  let clockControls = '';
+  if (admin) {
+    if (!clock.running && clock.accumulatedSeconds === 0 && clock.half === 1) {
+      clockControls = `<button class="btn btn-sm btn-outline" onclick="startClock()">Start Clock</button>`;
+    } else if (clock.running && clock.half === 1) {
+      clockControls = `<button class="btn btn-sm btn-outline" onclick="endHalf()">End 1st Half</button>`;
+    } else if (!clock.running && clock.half === 1 && clock.accumulatedSeconds > 0) {
+      clockControls = `<button class="btn btn-sm btn-outline" onclick="startSecondHalf()">Start 2nd Half</button>`;
+    }
+  }
+  const halfLabel = clock.half === 2 ? '2nd Half' : (clock.running || clock.accumulatedSeconds > 0 ? '1st Half' : '');
 
   const oppGoalsControls = admin ? `
         <button class="btn btn-sm btn-outline" onclick="incrementOpponentGoals(-1)" style="padding:0.3rem 0.6rem;font-size:1rem;line-height:1">−</button>
@@ -1809,7 +1920,12 @@ function renderGame() {
       ${admin ? `<button class="btn btn-sm btn-danger" onclick="confirmEndGame()">End Game</button>` : ''}
     </div>
     <div class="game-status">
-      <div class="game-clock">${formatDate(game.date)}</div>
+      <div class="game-clock">
+        <span id="game-clock-time">${formatClock(computeElapsedSeconds(clock))}</span>
+        ${halfLabel ? ` <span style="opacity:0.6;font-size:0.8em">${halfLabel}</span>` : ''}
+        ${clockControls ? ' ' + clockControls : ''}
+      </div>
+      <div style="font-size:0.75rem;color:var(--muted)">${formatDate(game.date)}</div>
       <div class="game-opponent" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;flex-wrap:wrap">
         <span style="display:inline-flex;align-items:center;gap:0.35rem">${ownTeamLogoHTML(18)}${data.ownTeam.name || 'Your Team'}</span>
         <span style="opacity:0.6">vs</span>
@@ -1825,6 +1941,11 @@ function renderGame() {
     ${liveControls}
     ${game.events.length > 0 ? `<div class="card goal-log"><label>Goals this game</label>${goalLog}</div>` : ''}
   `;
+
+  clearClockInterval();
+  if (clock.running) {
+    clockIntervalId = setInterval(tickClockDisplay, 1000);
+  }
 }
 
 function renderRoster() {
@@ -2249,6 +2370,10 @@ function openNewGameModal(prefill) {
       <label>Competition</label>
       <select class="input" id="game-competition" onchange="onGameCompetitionPickerChange(this,'newGame')">${competitionPickerOptionsHTML(prefill.competitionId ?? null)}</select>
     </div>
+    <div class="form-group">
+      <label>Half length (minutes)</label>
+      <input class="input" id="game-half-length" type="number" min="1" step="1" value="${prefill.halfLengthMinutes || 30}">
+    </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
       <button class="btn" onclick="startGame()">Start Game</button>
@@ -2371,6 +2496,66 @@ function confirmEndGame() {
   `);
 }
 
+// ── Realtime sync ──
+// Pushes goal/score/clock changes made by the admin to every other open
+// tab/device (including the admin's own other devices) without anyone having
+// to manually refresh. These handlers only ever mutate local `data` and
+// re-render — never saveData()/syncToSupabase() — so an incoming echo of our
+// own write can never trigger another write and loop back to Supabase.
+function applyRemoteGamesChange(payload) {
+  // A write we just made ourselves is still in flight (or queued right behind
+  // it): our local `data` is already at least as fresh as whatever Postgres
+  // is echoing back right now, so applying it here could clobber a newer
+  // local change with a stale one. Skip; the next real change picks it up.
+  if (syncInFlight || syncQueued) return;
+  if (payload.eventType === 'DELETE') {
+    const id = payload.old.id;
+    data.games = data.games.filter(g => g.id !== id);
+    if (data.activeGameId === id) data.activeGameId = null;
+  } else {
+    const game = mapGameRow(payload.new);
+    const idx = data.games.findIndex(g => g.id === game.id);
+    if (idx >= 0) data.games[idx] = game; else data.games.push(game);
+  }
+  saveDataLocal(data);
+  render();
+}
+
+function applyRemoteAppStateChange(payload) {
+  if (syncInFlight || syncQueued || !payload.new) return;
+  data.activeGameId = payload.new.active_game_id;
+  data.ownTeam = { name: payload.new.team_name || '', logo: payload.new.team_logo || null };
+  saveDataLocal(data);
+  render();
+}
+
+// Re-syncs on (re)connect so a device that was backgrounded/asleep and missed
+// pushed events (e.g. a phone that screen-locked mid-game) catches up right
+// away instead of staying stale until something else happens to re-render it.
+async function resyncFromSupabase() {
+  if (syncInFlight || syncQueued) return;
+  const remote = await loadDataFromSupabase();
+  if (remote) {
+    data = remote;
+    saveDataLocal(data);
+    render();
+  }
+}
+
+function setupRealtimeSync() {
+  sb.channel('games-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, applyRemoteGamesChange)
+    .subscribe(status => { if (status === 'SUBSCRIBED') resyncFromSupabase(); });
+
+  sb.channel('app-state-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.1' }, applyRemoteAppStateChange)
+    .subscribe();
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') resyncFromSupabase();
+  });
+}
+
 // ── Init ──
 // Apply whatever's in the URL immediately using localStorage data, then refresh from Supabase
 applyRoute();
@@ -2385,6 +2570,8 @@ applyRoute();
     applyRoute();
   }
 })();
+
+setupRealtimeSync();
 
 // Back/forward, a pasted URL, or a shared link opened in an already-running tab
 window.addEventListener('hashchange', applyRoute);
