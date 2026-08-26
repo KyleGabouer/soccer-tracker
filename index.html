@@ -842,7 +842,12 @@ async function loadDataFromSupabase() {
     id: t.id, name: t.name, logo: t.logo
   }));
 
-  const activeGameId = stateRes.data ? stateRes.data.active_game_id : null;
+  let activeGameId = stateRes.data ? stateRes.data.active_game_id : null;
+  // Self-heal a stale pointer left over from before targeted deletes existed
+  // (or any other way the referenced game stopped existing remotely).
+  if (activeGameId && !games.some(g => g.id === activeGameId)) {
+    activeGameId = null;
+  }
   const ownTeam = {
     name: (stateRes.data && stateRes.data.team_name) || '',
     logo: (stateRes.data && stateRes.data.team_logo) || null
@@ -859,6 +864,16 @@ function saveData(d) {
   saveDataLocal(d);
   // Async write to Supabase (fire-and-forget)
   syncToSupabase(d);
+}
+
+// Explicit, targeted remote delete — call this at the moment the user deletes
+// something (see deleteGame/removePlayer/deleteCompetition/deleteTeam), rather
+// than diffing whole tables on every save (see note in syncToSupabase).
+function deleteRemoteRow(table, id) {
+  if (!isAdmin()) return;
+  sb.from(table).delete().eq('id', id).then(({ error }) => {
+    if (error) console.warn(`Supabase delete failed (${table}/${id}):`, error);
+  });
 }
 
 let syncInFlight = false;
@@ -904,34 +919,12 @@ async function syncToSupabase(d) {
       }, { onConflict: 'id' })
     ]);
 
-    // Handle deletions: remove rows that are no longer in the data
-    const playerIds = d.players.map(p => p.id);
-    const gameIds = d.games.map(g => g.id);
-    const compIds = d.competitions.map(c => c.id);
-    const teamIds = d.teams.map(t => t.id);
-
-    const deletes = [];
-    if (playerIds.length > 0) {
-      deletes.push(sb.from('players').delete().not('id', 'in', '(' + playerIds.join(',') + ')'));
-    } else {
-      deletes.push(sb.from('players').delete().neq('id', ''));
-    }
-    if (gameIds.length > 0) {
-      deletes.push(sb.from('games').delete().not('id', 'in', '(' + gameIds.join(',') + ')'));
-    } else {
-      deletes.push(sb.from('games').delete().neq('id', ''));
-    }
-    if (compIds.length > 0) {
-      deletes.push(sb.from('competitions').delete().not('id', 'in', '(' + compIds.join(',') + ')'));
-    } else {
-      deletes.push(sb.from('competitions').delete().neq('id', ''));
-    }
-    if (teamIds.length > 0) {
-      deletes.push(sb.from('teams').delete().not('id', 'in', '(' + teamIds.join(',') + ')'));
-    } else {
-      deletes.push(sb.from('teams').delete().neq('id', ''));
-    }
-    await Promise.all(deletes);
+    // NOTE: we deliberately do NOT diff-delete rows here (i.e. "delete anything
+    // remote that isn't in d.*"). Deletions are handled explicitly at the call
+    // site (see deleteRemoteRow) when the user deletes something. Diffing on
+    // every save is unsafe with multiple devices/tabs open: a device with a
+    // stale in-memory `data` (e.g. a phone that's been idle since before a
+    // game started) would wipe out rows created elsewhere in the meantime.
 
   } catch (err) {
     console.warn('Supabase sync error:', err);
@@ -1213,6 +1206,7 @@ function addPlayer() {
 function removePlayer(id) {
   data.players = data.players.filter(p => p.id !== id);
   saveData(data);
+  deleteRemoteRow('players', id);
   render();
 }
 
@@ -1343,6 +1337,7 @@ function deleteGame(id) {
   if (data.activeGameId === id) data.activeGameId = null;
   data.games = data.games.filter(g => g.id !== id);
   saveData(data);
+  deleteRemoteRow('games', id);
   selectionState = null;
   viewingGameId = null;
   render();
@@ -1443,6 +1438,7 @@ function deleteCompetition(compId) {
   // Clear competitionId on orphaned games
   data.games.forEach(g => { if (g.competitionId === compId) g.competitionId = null; });
   saveData(data);
+  deleteRemoteRow('competitions', compId);
   closeModal();
   render();
 }
@@ -1536,6 +1532,7 @@ function deleteTeam(teamId) {
     }
   });
   saveData(data);
+  deleteRemoteRow('teams', teamId);
   closeModal();
   render();
 }
