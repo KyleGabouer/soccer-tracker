@@ -1940,13 +1940,13 @@ function renderGame() {
       </div>
     </div>
     <div class="game-status">
-      <div style="font-size:0.75rem;color:var(--muted)">${formatDate(game.date)}</div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.6rem">${formatDate(game.date)}</div>
       <div class="game-opponent" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;flex-wrap:wrap">
         <span style="display:inline-flex;align-items:center;gap:0.35rem">${ownTeamLogoHTML(18)}${data.ownTeam.name || 'Your Team'}</span>
         <span style="opacity:0.6">vs</span>
         <span style="display:inline-flex;align-items:center;gap:0.35rem">${opponentLogoHTML(game, 18)}${opponentName(game)}</span>
       </div>
-      ${cat ? `<div><span class="category-badge">${cat.name}</span></div>` : ''}
+      ${cat ? `<div style="margin-top:0.6rem"><span class="category-badge">${cat.name}</span></div>` : ''}
       <div class="game-score">${formatScore(game)}</div>
       <div class="game-clock"><span id="game-clock-time">${formatClock(computeElapsedSeconds(clock))}</span></div>
       <div style="margin-top:0.5rem;display:flex;align-items:center;justify-content:center;gap:0.75rem">
