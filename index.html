@@ -1216,6 +1216,27 @@ function getCompetitionById(id) {
   return data.competitions.find(c => c.id === id);
 }
 
+// Competitions ordered by most recent game first, for the Schedule/Stats
+// filter pills — whatever you're currently playing stays left-most instead of
+// pills sitting in whatever order the rows came back from Supabase in.
+// Competitions with no games yet sort to the end, keeping their relative order.
+function competitionsByRecency() {
+  const latestGame = {};
+  data.games.forEach(g => {
+    if (!g.competitionId) return;
+    const t = new Date(g.date).getTime();
+    if (isNaN(t)) return;
+    if (latestGame[g.competitionId] === undefined || t > latestGame[g.competitionId]) {
+      latestGame[g.competitionId] = t;
+    }
+  });
+  return data.competitions.slice().sort((a, b) => {
+    const at = latestGame[a.id] ?? -Infinity;
+    const bt = latestGame[b.id] ?? -Infinity;
+    return bt - at;
+  });
+}
+
 function getTeamById(id) {
   return data.teams.find(t => t.id === id);
 }
@@ -2026,7 +2047,7 @@ function renderHistory() {
   let filterHTML = '';
   if (data.competitions.length > 0) {
     const pills = [`<button class="filter-pill${gamesCompetitionFilter === null ? ' active' : ''}" onclick="filterGamesByCompetition(null)">All</button>`];
-    data.competitions.forEach(c => {
+    competitionsByRecency().forEach(c => {
       pills.push(`<button class="filter-pill${gamesCompetitionFilter === c.id ? ' active' : ''}" onclick="filterGamesByCompetition('${c.id}')">${c.name}</button>`);
     });
     filterHTML = `<div class="filter-row">${pills.join('')}</div>`;
@@ -2211,7 +2232,7 @@ function renderStats() {
   let filterHTML = '';
   if (data.competitions.length > 0) {
     const pills = [`<button class="filter-pill${statsCompetitionFilter === null ? ' active' : ''}" onclick="filterStatsByCompetition(null)">All</button>`];
-    data.competitions.forEach(c => {
+    competitionsByRecency().forEach(c => {
       pills.push(`<button class="filter-pill${statsCompetitionFilter === c.id ? ' active' : ''}" onclick="filterStatsByCompetition('${c.id}')">${c.name}</button>`);
     });
     filterHTML = `<div class="filter-row">${pills.join('')}</div>`;
