@@ -1934,7 +1934,7 @@ function renderGame() {
 
       return `<button class="${cls}" onclick="${onclick}">
         <span class="p-number">${p.number || '–'}</span>
-        <span class="p-name">${p.name}</span>
+        <span class="p-name">${playerShort(p.id)}</span>
       </button>`;
     }).join('');
 
@@ -2185,7 +2185,7 @@ function renderGameDetail(el) {
 
       return `<button class="${cls}" onclick="${onclick}">
         <span class="p-number">${p.number || '–'}</span>
-        <span class="p-name">${p.name}</span>
+        <span class="p-name">${playerShort(p.id)}</span>
       </button>`;
     }).join('');
 
