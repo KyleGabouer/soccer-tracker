@@ -25,7 +25,7 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
 - Player roster as card grid with photos, tappable to open profile modal
 - Player profiles with editable name, number, photo; shows season stats and per-game log
 - Photos resized to 200x200 JPEG and stored as base64 in Supabase
-- Teams (name + logo) — opponent picked from this list instead of free text; own team's name/logo set in Roster tab
+- Teams (name only) — opponent picked from this list instead of free text. Opponents show as a name with no crest; own team's name/logo is set in the Team tab and still displays.
 - Competitions (e.g. "Tournament", "Regular Season") — create/edit/delete in Settings tab
 - Competition assigned when starting a game via dropdown
 - Competition badges shown on game cards in history and game detail
@@ -44,7 +44,7 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
     clock: { halfLengthMinutes, half, running, startedAt, accumulatedSeconds }
   }],
   competitions: [{ id, name, emoji, categoryType }],
-  teams: [{ id, name, logo }],                  // logo: base64 string or null
+  teams: [{ id, name, logo }],                  // logo retained in the schema but unused; opponents render name-only
   ownTeam: { name, logo },
   activeGameId: null | string
 }
