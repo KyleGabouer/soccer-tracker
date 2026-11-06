@@ -17,7 +17,9 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
 
 ## Features
 - Quick-entry interface for recording goals/assists during live games
-- Live game clock — admin taps Start Clock (counts up from 0:00), End 1st Half (freezes wherever it is), Start 2nd Half (jumps to the configured half length and resumes counting up), End Game (freezes for good). Ticks live for every viewer, admin or not.
+- Live game clock — admin taps Start Game (counts up from 0:00), End Half (freezes wherever it is), Resume Game (jumps to the configured half length and resumes counting up), End Game (freezes for good), then Clear. Ticks live for every viewer, admin or not.
+- Status badge beside the clock reflects the game state: Upcoming before kickoff, Live while the clock runs (the only one that pulses, and it honours prefers-reduced-motion), Half whenever the clock is stopped with time banked, Final once ended.
+- A finished game stays on the Game tab showing its Final result until the admin taps Clear — so anyone checking in after the whistle still sees the score. In that state the scoring grid, opponent-goals stepper and clock controls are hidden; fix goals from the game's detail page instead.
 - Opponent goals tracked with +/- buttons during live games; score shown as "X - Y"
 - Edit finished games — change opponent/team, date, competition, opponent goals
 - Add goals/assists to finished games via the same player-tap flow
@@ -46,7 +48,7 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
   competitions: [{ id, name, emoji, categoryType }],
   teams: [{ id, name, logo }],                  // logo retained in the schema but unused; opponents render name-only
   ownTeam: { name, logo },
-  activeGameId: null | string
+  activeGameId: null | string      // stays set after a game ends, until the admin clears it
 }
 ```
 - In-memory `data` object is the single source of truth at runtime
@@ -55,6 +57,7 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
 - Every Supabase write result is checked for `.error` and surfaced via `alert()` if a write is rejected — supabase-js resolves rather than throws on a rejected write, so this doesn't happen automatically
 - On page load: renders from localStorage immediately, refreshes from Supabase once, then a Realtime subscription keeps `games`/`app_state` live from then on (also re-syncs on reconnect/tab-visible, in case a device missed pushed events while asleep/backgrounded)
 - Game clock is a count-up stopwatch (not a countdown): `elapsed = accumulatedSeconds + (running ? now - startedAt : 0)`, so any device can compute the correct current time with zero per-second writes
+- `getActiveGame()` can return a *finished* game (see Clear above), so anything that mutates a game through it guards on `game.finished`
 - Supabase tables: `players`, `games`, `competitions`, `teams`, `app_state`
 - `games.events` stored as JSONB column (not a separate table)
 
