@@ -585,7 +585,12 @@
       font-size: 0.78rem;
       color: var(--muted);
       text-align: right;
+      margin-left: auto;
     }
+
+    /* Pill and scorer list share a text baseline, so a wrapping scorer list
+       starts level with the pill's label rather than riding above it. */
+    .game-card-meta { align-items: baseline; }
 
     .game-detail-back {
       display: inline-flex;
@@ -2125,8 +2130,8 @@ function renderHistory() {
         <span class="game-card-opponent" style="display:inline-flex;align-items:center;gap:0.4rem">${opponentLogoHTML(g, 20)}${opponentName(g)}</span>
         <span class="game-card-score" style="color:${g.events.length < g.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(g)}</span>
       </div>
-      ${cat || topScorers ? `<div class="game-card-row">
-        <span style="flex-shrink:0;max-width:60%">${cat ? `<span class="category-badge">${cat.name}</span>` : ''}</span>
+      ${cat || topScorers ? `<div class="game-card-row game-card-meta">
+        ${cat ? `<span class="category-badge" style="flex-shrink:0;max-width:60%">${cat.name}</span>` : ''}
         <span class="game-card-stats">${topScorers}</span>
       </div>` : ''}
     </div>`;
