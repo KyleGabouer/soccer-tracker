@@ -1941,7 +1941,7 @@ function renderGame() {
     <div class="game-status">
       <div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.6rem">${formatDate(game.date)}</div>
       <div class="game-opponent" style="display:flex;flex-direction:column;align-items:center;gap:0.3rem">
-        ${ownTeamLogoHTML(64)}
+        <span style="display:inline-flex;margin-bottom:2.5px">${ownTeamLogoHTML(64)}</span>
         <span>${data.ownTeam.name || 'Your Team'}</span>
         <span><span style="opacity:0.6">vs</span> ${opponentName(game)}</span>
       </div>
