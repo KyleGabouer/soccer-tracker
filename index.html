@@ -411,15 +411,21 @@
       font-variant-numeric: tabular-nums;
     }
 
-    .live-badge {
-      color: var(--red);
+    .status-badge {
+      color: var(--muted);
       font-size: 0.72rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 1px;
       margin-right: 0.4rem;
+    }
+
+    .status-badge.is-live {
+      color: var(--red);
       animation: livePulse 1.8s ease-in-out infinite;
     }
+
+    .status-badge.is-final { color: var(--text); }
 
     @keyframes livePulse {
       0%, 100% { opacity: 1; }
@@ -427,7 +433,7 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .live-badge { animation: none; }
+      .status-badge.is-live { animation: none; }
     }
 
     .prompt-text {
@@ -1168,7 +1174,7 @@ function formatScore(game) {
 
 function incrementOpponentGoals(delta) {
   const game = getActiveGame();
-  if (!game) return;
+  if (!game || game.finished) return;
   game.opponentGoals = Math.max(0, game.opponentGoals + delta);
   saveData(data);
   render();
@@ -1210,9 +1216,19 @@ function formatGoalMinute(ev, game) {
   return minute <= boundary ? String(minute) : `${boundary}+${minute - boundary}`;
 }
 
+// Upcoming -> Live -> Half -> Live -> Final. Only Live pulses; the rest are
+// steady labels. A paused clock mid-game reads as Half (the break).
+function gameStatus(game) {
+  const c = game.clock || {};
+  if (game.finished) return { text: 'Final', cls: 'is-final' };
+  if (c.running) return { text: 'Live', cls: 'is-live' };
+  if ((c.accumulatedSeconds || 0) > 0) return { text: 'Half', cls: 'is-half' };
+  return { text: 'Upcoming', cls: 'is-upcoming' };
+}
+
 function startClock() {
   const game = getActiveGame();
-  if (!game || !game.clock || game.clock.running) return;
+  if (!game || game.finished || !game.clock || game.clock.running) return;
   game.clock.running = true;
   game.clock.startedAt = new Date().toISOString();
   saveData(data);
@@ -1223,7 +1239,7 @@ function startClock() {
 // admin taps this at the referee's whistle, not at the configured half length.
 function endHalf() {
   const game = getActiveGame();
-  if (!game || !game.clock || !game.clock.running || game.clock.half !== 1) return;
+  if (!game || game.finished || !game.clock || !game.clock.running || game.clock.half !== 1) return;
   game.clock.accumulatedSeconds = computeElapsedSeconds(game.clock);
   game.clock.running = false;
   game.clock.startedAt = null;
@@ -1235,7 +1251,7 @@ function endHalf() {
 // however much stoppage time the 1st half actually ran, and resumes ticking.
 function startSecondHalf() {
   const game = getActiveGame();
-  if (!game || !game.clock || game.clock.running || game.clock.half !== 1) return;
+  if (!game || game.finished || !game.clock || game.clock.running || game.clock.half !== 1) return;
   game.clock.half = 2;
   game.clock.accumulatedSeconds = (game.clock.halfLengthMinutes || 0) * 60;
   game.clock.running = true;
@@ -1506,6 +1522,18 @@ function endGame() {
     game.clock.startedAt = null;
   }
   game.finished = true;
+  // activeGameId deliberately stays set: the result holds on the Game tab in
+  // its Final state until the admin clears it (see clearFinishedGame).
+  saveData(data);
+  selectionState = null;
+  render();
+}
+
+// Dismisses a finished game from the Game tab. It is already in the schedule
+// and the season stats by this point, so nothing is lost.
+function clearFinishedGame() {
+  const game = getActiveGame();
+  if (!game || !game.finished) return;
   data.activeGameId = null;
   saveData(data);
   selectionState = null;
@@ -1889,8 +1917,9 @@ function renderGame() {
   `).join('');
 
   const clock = game.clock || { halfLengthMinutes: 30, half: 1, running: false, startedAt: null, accumulatedSeconds: 0 };
+  const status = gameStatus(game);
   let clockControls = '';
-  if (admin) {
+  if (admin && !game.finished) {
     if (!clock.running && clock.accumulatedSeconds === 0 && clock.half === 1) {
       clockControls = `<button class="btn btn-sm btn-outline" onclick="startClock()">Start Game</button>`;
     } else if (clock.running && clock.half === 1) {
@@ -1900,7 +1929,7 @@ function renderGame() {
     }
   }
 
-  const oppGoalsRow = admin ? `
+  const oppGoalsRow = admin && !game.finished ? `
       <div style="margin-top:0.5rem;display:flex;align-items:center;justify-content:center;gap:0.75rem">
         <span style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Opponent Goals</span>
         <button class="btn btn-sm btn-outline" onclick="incrementOpponentGoals(-1)" style="padding:0.3rem 0.6rem;font-size:1rem;line-height:1">−</button>
@@ -1909,7 +1938,7 @@ function renderGame() {
       </div>` : '';
 
   let liveControls = '';
-  if (admin) {
+  if (admin && !game.finished) {
     const isSelecting = selectionState !== null;
     const isAssistStep = selectionState?.type === 'assist';
 
@@ -1953,10 +1982,12 @@ function renderGame() {
 
   el.innerHTML = `
     <div class="view-header">
-      <h1>Live Game</h1>
+      <h1>${game.finished ? 'Final' : 'Live Game'}</h1>
       <div style="display:flex;gap:0.5rem">
         ${clockControls}
-        ${admin ? `<button class="btn btn-sm btn-danger" onclick="confirmEndGame()">End Game</button>` : ''}
+        ${admin ? (game.finished
+          ? `<button class="btn btn-sm btn-outline" onclick="clearFinishedGame()">Clear</button>`
+          : `<button class="btn btn-sm btn-danger" onclick="confirmEndGame()">End Game</button>`) : ''}
       </div>
     </div>
     <div class="game-status">
@@ -1967,7 +1998,7 @@ function renderGame() {
       </div>
       ${cat ? `<div style="margin-top:0.6rem"><span class="category-badge">${cat.name}</span></div>` : ''}
       <div class="game-score">${formatScore(game)}</div>
-      <div class="game-clock"><span class="live-badge">Live</span><span id="game-clock-time">${formatClock(computeElapsedSeconds(clock))}</span></div>
+      <div class="game-clock"><span class="status-badge ${status.cls}">${status.text}</span><span id="game-clock-time">${formatClock(computeElapsedSeconds(clock))}</span></div>
       ${oppGoalsRow}
     </div>
     ${liveControls}
@@ -2531,7 +2562,7 @@ function confirmEndGame() {
   if (!game) return;
   openModal(`
     <h2>End Game?</h2>
-    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:0.5rem">This will save the game to your history. You can still edit it later.</p>
+    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:0.5rem">This saves the game to your history. The final score stays on this tab until you clear it.</p>
     <div class="modal-actions">
       <button class="btn btn-danger btn-sm" onclick="if(confirm('Delete this in-progress game? All recorded goals will be lost. This cannot be undone.')){deleteGame('${game.id}');closeModal();}">Delete</button>
       <button class="btn btn-outline" onclick="closeModal()">Keep Playing</button>
