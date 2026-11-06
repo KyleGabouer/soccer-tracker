@@ -411,6 +411,25 @@
       font-variant-numeric: tabular-nums;
     }
 
+    .live-badge {
+      color: var(--red);
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-right: 0.4rem;
+      animation: livePulse 1.8s ease-in-out infinite;
+    }
+
+    @keyframes livePulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .live-badge { animation: none; }
+    }
+
     .prompt-text {
       text-align: center;
       padding: 0.75rem;
@@ -1941,7 +1960,6 @@ function renderGame() {
       </div>
     </div>
     <div class="game-status">
-      <div style="font-size:0.75rem;color:var(--red);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:7.5px">Live</div>
       <div class="game-opponent" style="display:flex;flex-direction:column;align-items:center;gap:0.3rem">
         <span style="display:inline-flex;margin-bottom:2.5px">${ownTeamLogoHTML(64)}</span>
         <span>${data.ownTeam.name || 'Your Team'}</span>
@@ -1949,7 +1967,7 @@ function renderGame() {
       </div>
       ${cat ? `<div style="margin-top:0.6rem"><span class="category-badge">${cat.name}</span></div>` : ''}
       <div class="game-score">${formatScore(game)}</div>
-      <div class="game-clock"><span id="game-clock-time">${formatClock(computeElapsedSeconds(clock))}</span></div>
+      <div class="game-clock"><span class="live-badge">Live</span><span id="game-clock-time">${formatClock(computeElapsedSeconds(clock))}</span></div>
       ${oppGoalsRow}
     </div>
     ${liveControls}
