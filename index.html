@@ -269,6 +269,12 @@
       white-space: nowrap;
     }
 
+    /* Narrow columns need the two-line split to stay uniform; once there's
+       room for the whole name on one line, run it back together. */
+    @media (min-width: 600px) {
+      .roster-card .rc-name span { display: inline; }
+    }
+
     .roster-card .rc-stats {
       font-size: 0.65rem;
       color: var(--muted);
@@ -1093,7 +1099,7 @@ function nameTwoLineHTML(name) {
   const parts = String(name || '').trim().split(/\s+/);
   const first = parts.shift() || '';
   const rest = parts.join(' ');
-  return `<span>${first}</span>${rest ? `<span>${rest}</span>` : ''}`;
+  return `<span>${first}</span>${rest ? ` <span>${rest}</span>` : ''}`;
 }
 
 function playerShort(id) {
