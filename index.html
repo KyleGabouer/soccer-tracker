@@ -607,6 +607,10 @@
       font-weight: 600;
       color: var(--muted);
       margin-top: 0.3rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
     }
 
     /* ── Filter pills ── */
@@ -2100,7 +2104,7 @@ function renderHistory() {
         <span class="game-card-score" style="color:${g.events.length < g.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(g)}</span>
       </div>
       ${cat || topScorers ? `<div class="game-card-row">
-        <span>${cat ? `<span class="category-badge">${cat.name}</span>` : ''}</span>
+        <span style="flex-shrink:0;max-width:60%">${cat ? `<span class="category-badge">${cat.name}</span>` : ''}</span>
         <span class="game-card-stats">${topScorers}</span>
       </div>` : ''}
     </div>`;
