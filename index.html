@@ -1001,7 +1001,6 @@ let viewingGameId = null;
 let statsCompetitionFilter = null;
 let gamesCompetitionFilter = null;
 let modalReturnStash = null; // remembers which game modal to reopen after an inline "+ Add new…" flow
-let teamLogoDraft = null; // logo dataURL being edited in the New/Edit Team modal, before save
 
 // Drives the ticking "MM:SS" text in the live game clock. renderGame() always
 // clears and (if the clock is running) re-arms this, so it never needs to
@@ -1290,20 +1289,8 @@ function shieldIconSVG(size) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:${size}px;height:${size}px;flex-shrink:0"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`;
 }
 
-// A team's logo (or the shield placeholder if it has none), sized for
-// inline use next to an opponent name. Returns '' when the game has no
-// linked team (legacy free-text opponent) — nothing to show a logo for.
-function opponentLogoHTML(game, size) {
-  const team = game.teamId ? getTeamById(game.teamId) : null;
-  if (!team) return '';
-  if (team.logo) {
-    return `<img src="${team.logo}" alt="" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--surface2);border:1px solid var(--border)">`;
-  }
-  return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--muted);flex-shrink:0">${shieldIconSVG(Math.round(size * 0.55))}</span>`;
-}
-
-// Your own team's logo (or the shield placeholder if none set yet) — unlike
-// opponentLogoHTML, always renders something since "our team" always exists.
+// Your own team's logo, or the shield placeholder if none is set yet.
+// Opponents are shown by name only — no crest to maintain per team.
 function ownTeamLogoHTML(size) {
   if (data.ownTeam.logo) {
     return `<img src="${data.ownTeam.logo}" alt="" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--surface2);border:1px solid var(--border)">`;
@@ -1681,10 +1668,9 @@ function addTeam() {
   const nameEl = document.getElementById('team-name');
   const name = nameEl.value.trim();
   if (!name) return;
-  const team = { id: Date.now().toString(), name, logo: teamLogoDraft };
+  const team = { id: Date.now().toString(), name, logo: null };
   data.teams.push(team);
   saveData(data);
-  teamLogoDraft = null;
   returnFromInlineAddModal({ teamId: team.id });
   render();
 }
@@ -1695,9 +1681,7 @@ function updateTeam(teamId) {
   const name = document.getElementById('team-name').value.trim();
   if (!name) return;
   team.name = name;
-  team.logo = teamLogoDraft;
   saveData(data);
-  teamLogoDraft = null;
   closeModal();
   render();
 }
@@ -1719,44 +1703,9 @@ function deleteTeam(teamId) {
   render();
 }
 
-function handleTeamLogoPick(file) {
-  if (!file) return;
-  resizeImageToDataURL(file, 200, (dataUrl) => {
-    teamLogoDraft = dataUrl;
-    updateTeamLogoPreview();
-  });
-}
-
-function updateTeamLogoPreview() {
-  const img = document.getElementById('team-logo-preview');
-  const placeholder = document.getElementById('team-logo-placeholder');
-  if (!img) return;
-  if (teamLogoDraft) {
-    img.src = teamLogoDraft;
-    img.style.display = '';
-    if (placeholder) placeholder.style.display = 'none';
-  } else {
-    img.style.display = 'none';
-    if (placeholder) placeholder.style.display = '';
-  }
-}
-
-function teamLogoPickerHTML() {
-  return `
-    <div class="profile-photo-wrap" onclick="document.getElementById('team-logo-input').click()">
-      <img id="team-logo-preview" src="${teamLogoDraft || ''}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;background:var(--surface2);border:3px solid var(--border);${teamLogoDraft ? '' : 'display:none'}">
-      <div id="team-logo-placeholder" class="profile-initials" style="width:80px;height:80px;${teamLogoDraft ? 'display:none' : ''}">${shieldIconSVG(32)}</div>
-    </div>
-    <div class="profile-photo-label">Tap to ${teamLogoDraft ? 'change' : 'add'} logo</div>
-    <input type="file" id="team-logo-input" accept="image/*" style="display:none" onchange="handleTeamLogoPick(this.files[0])">
-  `;
-}
-
 function openAddTeamModal() {
-  teamLogoDraft = null;
   openModal(`
     <h2>New Team</h2>
-    ${teamLogoPickerHTML()}
     <div class="form-group">
       <label>Name</label>
       <input class="input" id="team-name" placeholder="e.g. Rainier FC" onkeydown="if(event.key==='Enter')addTeam()">
@@ -1772,10 +1721,8 @@ function openAddTeamModal() {
 function openEditTeamModal(teamId) {
   const team = getTeamById(teamId);
   if (!team) return;
-  teamLogoDraft = team.logo;
   openModal(`
     <h2>Edit Team</h2>
-    ${teamLogoPickerHTML()}
     <div class="form-group">
       <label>Name</label>
       <input class="input" id="team-name" value="${team.name}">
@@ -1838,7 +1785,6 @@ function returnFromInlineAddModal(overrides) {
 }
 
 function cancelInlineAddModal() {
-  teamLogoDraft = null;
   returnFromInlineAddModal();
 }
 
@@ -1997,7 +1943,7 @@ function renderGame() {
       <div class="game-opponent" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;flex-wrap:wrap">
         <span style="display:inline-flex;align-items:center;gap:0.35rem">${ownTeamLogoHTML(18)}${data.ownTeam.name || 'Your Team'}</span>
         <span style="opacity:0.6">vs</span>
-        <span style="display:inline-flex;align-items:center;gap:0.35rem">${opponentLogoHTML(game, 18)}${opponentName(game)}</span>
+        <span>${opponentName(game)}</span>
       </div>
       ${cat ? `<div style="margin-top:0.6rem"><span class="category-badge">${cat.name}</span></div>` : ''}
       <div class="game-score">${formatScore(game)}</div>
@@ -2128,7 +2074,7 @@ function renderHistory() {
     return `<div class="card game-card" onclick="goToGame('${g.id}')">
       <div class="game-card-date">${formatDate(g.date)}</div>
       <div class="game-card-row">
-        <span class="game-card-opponent" style="display:inline-flex;align-items:center;gap:0.4rem">${opponentLogoHTML(g, 20)}${opponentName(g)}</span>
+        <span class="game-card-opponent">${opponentName(g)}</span>
         <span class="game-card-score" style="color:${g.events.length < g.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(g)}</span>
       </div>
       ${cat || topScorers ? `<div class="game-card-row game-card-meta">
@@ -2240,7 +2186,7 @@ function renderGameDetail(el) {
     <div class="view-header" style="align-items:flex-start">
       <div>
         <div class="game-card-date">${formatDate(game.date)}</div>
-        <h1 style="display:flex;align-items:center;gap:0.5rem">${opponentLogoHTML(game, 28)}${opponentName(game)}</h1>
+        <h1>${opponentName(game)}</h1>
         ${cat ? `<div><span class="category-badge">${cat.name}</span></div>` : ''}
       </div>
       <span class="game-card-score" style="font-size:1.5rem;color:${game.events.length < game.opponentGoals ? 'var(--red)' : 'var(--text)'}">${formatScore(game)}</span>
@@ -2396,7 +2342,6 @@ function renderSettings() {
   const teamItems = data.teams.map(t => `
     <div class="settings-item">
       <div class="settings-item-left" onclick="openEditTeamModal('${t.id}')">
-        ${t.logo ? `<img src="${t.logo}" alt="${t.name}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--surface2);border:1px solid var(--border)">` : `<span class="settings-item-emoji">${shieldIconSVG(18)}</span>`}
         <span class="settings-item-name">${t.name}</span>
       </div>
     </div>
