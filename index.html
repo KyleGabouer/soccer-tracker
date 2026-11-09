@@ -2337,7 +2337,7 @@ function renderLineups() {
     <div class="pitch">${rows}${keeper}</div>
     ${benchHTML}
     ${admin ? `<div style="display:flex;justify-content:flex-end;margin-top:1rem">
-      <button class="btn btn-sm btn-danger" onclick="deleteLineup('${lineup.id}')">Delete</button>
+      <button class="btn btn-sm btn-outline" onclick="openEditLineupModal('${lineup.id}')">Edit</button>
     </div>` : ''}`;
 }
 
@@ -2377,12 +2377,42 @@ function addLineup() {
   render();
 }
 
+function openEditLineupModal(id) {
+  const lineup = (data.lineups || []).find(l => l.id === id);
+  if (!lineup) return;
+  openModal(`
+    <h2>Edit Lineup</h2>
+    <div class="form-group">
+      <label>Name</label>
+      <input class="input" id="edit-lineup-name" value="${lineup.name}" onkeydown="if(event.key==='Enter')updateLineup('${id}')">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger btn-sm" onclick="deleteLineup('${id}')">Delete</button>
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="updateLineup('${id}')">Save</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('edit-lineup-name')?.select(), 100);
+}
+
+function updateLineup(id) {
+  const lineup = (data.lineups || []).find(l => l.id === id);
+  if (!lineup) return;
+  const name = document.getElementById('edit-lineup-name').value.trim();
+  if (!name) return;
+  lineup.name = name;
+  saveData(data);
+  closeModal();
+  render();
+}
+
 function deleteLineup(id) {
   if (!confirm('Delete this lineup?')) return;
   data.lineups = data.lineups.filter(l => l.id !== id);
   if (selectedLineupId === id) selectedLineupId = null;
   saveData(data);
   deleteRemoteRow('lineups', id);
+  closeModal();
   render();
 }
 
