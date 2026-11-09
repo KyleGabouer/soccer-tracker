@@ -23,6 +23,7 @@
       --radius: 12px;
       --radius-sm: 6px;
       --radius-xs: 4px;
+      --pitch: #7e8a70;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -446,6 +447,74 @@
       .status-badge.is-live { animation: none; }
     }
 
+    .pitch {
+      background: var(--pitch);
+      border-radius: var(--radius);
+      padding: 1.1rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-evenly;
+      gap: 0.9rem;
+      min-height: 340px;
+    }
+
+    .pitch-line {
+      display: flex;
+      justify-content: center;
+      gap: 0.6rem;
+    }
+
+    .pitch-slot {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      border: 3px solid #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+      background: var(--surface2);
+      overflow: hidden;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      cursor: default;
+    }
+
+    .pitch-slot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .pitch-slot .slot-initials {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .pitch-slot.is-empty {
+      background: rgba(255,255,255,0.14);
+      border-style: dashed;
+      border-color: rgba(255,255,255,0.75);
+    }
+
+    .pitch-slot.is-empty .slot-initials { color: rgba(255,255,255,0.9); font-size: 1rem; }
+
+    .pitch-slot.tappable { cursor: pointer; }
+    .pitch-slot.tappable:active { transform: scale(0.94); }
+
+    .formation-name {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .line-stepper {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.35rem 0;
+    }
+
     .prompt-text {
       text-align: center;
       padding: 0.75rem;
@@ -759,6 +828,10 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     Team
   </button>
+  <button class="tab" data-view="lineups" onclick="goToView('lineups')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="8" r="1.6"/><circle cx="8" cy="15" r="1.6"/><circle cx="16" cy="15" r="1.6"/></svg>
+    Lineups
+  </button>
   <button class="tab" data-view="settings" onclick="goToView('settings')">
     <svg id="tab-settings-icon-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
     <svg id="tab-settings-icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -777,6 +850,9 @@
 
 <!-- ── Roster View ── -->
 <div class="view" id="view-roster"></div>
+
+<!-- ── Lineups View ── -->
+<div class="view" id="view-lineups"></div>
 
 <!-- ── Settings View ── -->
 <div class="view" id="view-settings"></div>
@@ -844,10 +920,12 @@ function loadDataLocal() {
   if (raw) {
     d = JSON.parse(raw);
   } else {
-    d = { players: [], games: [], competitions: [], teams: [], activeGameId: null };
+    d = { players: [], games: [], competitions: [], teams: [], formations: [], lineups: [], activeGameId: null };
   }
   if (!d.competitions) d.competitions = [];
   if (!d.teams) d.teams = [];
+  if (!d.formations) d.formations = [];
+  if (!d.lineups) d.lineups = [];
   if (!d.ownTeam) d.ownTeam = { name: '', logo: null };
   if (d.ownTeam.name === undefined) d.ownTeam.name = '';
   if (d.ownTeam.logo === undefined) d.ownTeam.logo = null;
@@ -886,17 +964,24 @@ function mapGameRow(g) {
 }
 
 async function loadDataFromSupabase() {
-  const [playersRes, gamesRes, competitionsRes, teamsRes, stateRes] = await Promise.all([
+  const [playersRes, gamesRes, competitionsRes, teamsRes, formationsRes, lineupsRes, stateRes] = await Promise.all([
     sb.from('players').select('*'),
     sb.from('games').select('*'),
     sb.from('competitions').select('*'),
     sb.from('teams').select('*'),
+    sb.from('formations').select('*'),
+    sb.from('lineups').select('*'),
     sb.from('app_state').select('*').eq('id', 1).single()
   ]);
 
   if (playersRes.error || gamesRes.error || competitionsRes.error || teamsRes.error) {
     console.warn('Supabase load failed, falling back to localStorage');
     return null;
+  }
+  // The lineups migration may not have been run yet; treat those tables as
+  // simply empty rather than failing the whole load.
+  if (formationsRes.error || lineupsRes.error) {
+    console.warn('Formations/lineups unavailable (migration not run?) — continuing without them');
   }
 
   const players = (playersRes.data || []).map(p => ({
@@ -913,6 +998,15 @@ async function loadDataFromSupabase() {
     id: t.id, name: t.name, logo: t.logo
   }));
 
+  const formations = (formationsRes.data || []).map(f => ({
+    id: f.id, name: f.name, lines: f.lines || [], squadSize: f.squad_size || 9
+  }));
+
+  const lineups = (lineupsRes.data || []).map(l => ({
+    id: l.id, name: l.name, formationId: l.formation_id,
+    goalkeeperId: l.goalkeeper_id, slots: l.slots || {}, gameId: l.game_id || null
+  }));
+
   let activeGameId = stateRes.data ? stateRes.data.active_game_id : null;
   // Self-heal a stale pointer left over from before targeted deletes existed
   // (or any other way the referenced game stopped existing remotely).
@@ -924,7 +1018,7 @@ async function loadDataFromSupabase() {
     logo: (stateRes.data && stateRes.data.team_logo) || null
   };
 
-  return { players, games, competitions, teams, ownTeam, activeGameId };
+  return { players, games, competitions, teams, formations, lineups, ownTeam, activeGameId };
 }
 
 function saveData(d) {
@@ -981,28 +1075,42 @@ async function syncToSupabase(d) {
     const teams = d.teams.map(t => ({
       id: t.id, name: t.name, logo: t.logo
     }));
+    const formations = (d.formations || []).map(f => ({
+      id: f.id, name: f.name, lines: f.lines || [], squad_size: f.squadSize || 9
+    }));
+    const lineups = (d.lineups || []).map(l => ({
+      id: l.id, name: l.name, formation_id: l.formationId,
+      goalkeeper_id: l.goalkeeperId || null, slots: l.slots || {}, game_id: l.gameId || null
+    }));
 
-    const results = await Promise.all([
-      sb.from('players').upsert(players, { onConflict: 'id' }),
-      sb.from('games').upsert(games, { onConflict: 'id' }),
-      sb.from('competitions').upsert(competitions, { onConflict: 'id' }),
-      sb.from('teams').upsert(teams, { onConflict: 'id' }),
-      sb.from('app_state').upsert({
+    // Name each write alongside its promise so error reporting can't drift out
+    // of step with the list, and so optional tables can be skipped.
+    const writes = [
+      ['players', sb.from('players').upsert(players, { onConflict: 'id' })],
+      ['games', sb.from('games').upsert(games, { onConflict: 'id' })],
+      ['competitions', sb.from('competitions').upsert(competitions, { onConflict: 'id' })],
+      ['teams', sb.from('teams').upsert(teams, { onConflict: 'id' })],
+      ['app_state', sb.from('app_state').upsert({
         id: 1,
         active_game_id: d.activeGameId,
         team_name: d.ownTeam.name,
         team_logo: d.ownTeam.logo
-      }, { onConflict: 'id' })
-    ]);
+      }, { onConflict: 'id' })]
+    ];
+    // Only touched once there's something to save, so the app stays quiet
+    // before supabase-lineups-migration.sql has been run.
+    if (formations.length) writes.push(['formations', sb.from('formations').upsert(formations, { onConflict: 'id' })]);
+    if (lineups.length) writes.push(['lineups', sb.from('lineups').upsert(lineups, { onConflict: 'id' })]);
+
+    const results = await Promise.all(writes.map(([, p]) => p));
 
     // supabase-js resolves (rather than rejects) on a write that Postgres
     // rejects — it just comes back as { error }. Without checking this, a
     // partial write (e.g. one table's upsert failing a constraint) fails
     // completely silently: other devices just never see the change, with no
     // error anywhere. Surface it loudly instead.
-    const tableNames = ['players', 'games', 'competitions', 'teams', 'app_state'];
     const failures = results
-      .map((r, i) => ({ table: tableNames[i], error: r && r.error }))
+      .map((r, i) => ({ table: writes[i][0], error: r && r.error }))
       .filter(f => f.error);
     if (failures.length > 0) {
       const msg = failures.map(f => `${f.table}: ${f.error.message}`).join('\n');
@@ -1036,6 +1144,9 @@ let viewingGameId = null;
 let statsCompetitionFilter = null;
 let gamesCompetitionFilter = null;
 let modalReturnStash = null; // remembers which game modal to reopen after an inline "+ Add new…" flow
+let selectedLineupId = null; // which saved lineup the Lineups tab is showing
+let formationDraft = null;   // line sizes being built in the New Formation modal
+let slotPickTarget = null;   // slot awaiting a player pick ('gk', or 'lineIndex-slotIndex')
 
 // Drives the ticking "MM:SS" text in the live game clock. renderGame() always
 // clears and (if the clock is running) re-arms this, so it never needs to
@@ -1057,7 +1168,7 @@ const COMPETITION_CATEGORIES = ['Tournament', 'Showcase', 'Friendly', 'Cup', 'Le
 // URL hash routing — #/game, #/games, #/games/<id>, #/stats, #/team, #/settings.
 // A hash (not a real path) works with zero server config on GitHub Pages and
 // lets a refresh or a shared link land back on the exact same screen.
-const VIEW_SLUGS = { game: 'game', history: 'games', stats: 'stats', roster: 'team', settings: 'settings' };
+const VIEW_SLUGS = { game: 'game', history: 'games', stats: 'stats', roster: 'team', lineups: 'lineups', settings: 'settings' };
 const SLUG_TO_VIEW = Object.fromEntries(Object.entries(VIEW_SLUGS).map(([view, slug]) => [slug, view]));
 
 function hashFor(view, subId) {
@@ -1882,6 +1993,7 @@ function render() {
   renderRoster();
   renderHistory();
   renderStats();
+  renderLineups();
   renderSettings();
 }
 
@@ -2019,6 +2131,335 @@ function renderGame() {
   if (clock.running) {
     clockIntervalId = setInterval(tickClockDisplay, 1000);
   }
+}
+
+// ── Lineups ──
+// A formation's `lines` are the outfield rows ordered defence -> attack, so
+// [3,2,3] is a 3-2-3 and the name is just those numbers joined. The keeper is
+// implicit — never in `lines` — and `squadSize` lives on the record so other
+// team sizes can be added later without reworking any of this.
+const LINEUP_MIN_LINES = 3, LINEUP_MAX_LINES = 4;
+const LINEUP_MIN_PER_LINE = 1, LINEUP_MAX_PER_LINE = 4;
+const DEFAULT_SQUAD_SIZE = 9;
+
+function formationName(lines) {
+  return lines.join('-');
+}
+
+function outfieldCount(lines) {
+  return lines.reduce((t, n) => t + n, 0);
+}
+
+function getFormationById(id) {
+  return (data.formations || []).find(f => f.id === id);
+}
+
+function getSelectedLineup() {
+  const lineups = data.lineups || [];
+  return lineups.find(l => l.id === selectedLineupId) || lineups[0] || null;
+}
+
+function selectLineup(id) {
+  selectedLineupId = id;
+  render();
+}
+
+// Which player sits in a given slot ('gk' or 'lineIndex-slotIndex').
+function slotPlayerId(lineup, key) {
+  if (!lineup) return null;
+  return key === 'gk' ? (lineup.goalkeeperId || null) : ((lineup.slots || {})[key] || null);
+}
+
+function assignedPlayerIds(lineup) {
+  if (!lineup) return [];
+  return [lineup.goalkeeperId, ...Object.values(lineup.slots || {})].filter(Boolean);
+}
+
+function slotAvatarHTML(player, tappable, key) {
+  const inner = player
+    ? (player.photo
+        ? `<img src="${player.photo}" alt="${player.name}">`
+        : `<span class="slot-initials">${getInitials(player.name)}</span>`)
+    : `<span class="slot-initials">+</span>`;
+  const cls = `pitch-slot${player ? '' : ' is-empty'}${tappable ? ' tappable' : ''}`;
+  const onclick = tappable ? ` onclick="openSlotPicker('${key}')"` : '';
+  const title = player ? ` title="${player.name}"` : '';
+  return `<button class="${cls}"${onclick}${title} aria-label="${player ? player.name : 'Empty slot'}">${inner}</button>`;
+}
+
+function renderLineups() {
+  const el = document.getElementById('view-lineups');
+  const admin = isAdmin();
+  const formations = data.formations || [];
+  const lineups = data.lineups || [];
+
+  const header = `<div class="view-header"><h1>Lineups</h1>${
+    admin ? `<div style="display:flex;gap:0.5rem">${
+      formations.length ? `<button class="btn btn-sm" onclick="openNewLineupModal()">+ Lineup</button>` : ''
+    }<button class="btn btn-sm btn-outline" onclick="openFormationsModal()">Formations</button></div>` : ''
+  }</div>`;
+
+  if (!formations.length) {
+    el.innerHTML = `${header}
+      <div class="empty-state">
+        <h3>No formations yet</h3>
+        <p>${admin ? 'Build a formation first — a goalkeeper plus 3 or 4 lines — then you can fill it with players.' : 'Check back once a lineup has been set.'}</p>
+        ${admin ? `<button class="btn" onclick="openFormationModal()">New Formation</button>` : ''}
+      </div>`;
+    return;
+  }
+
+  if (!lineups.length) {
+    el.innerHTML = `${header}
+      <div class="empty-state">
+        <h3>No lineups yet</h3>
+        <p>${admin ? 'Create a lineup to start placing players into a formation.' : 'Check back once a lineup has been set.'}</p>
+        ${admin ? `<button class="btn" onclick="openNewLineupModal()">New Lineup</button>` : ''}
+      </div>`;
+    return;
+  }
+
+  const lineup = getSelectedLineup();
+  const formation = getFormationById(lineup.formationId);
+
+  const picker = lineups.length > 1 || admin ? `
+    <div class="form-group">
+      <select class="input" onchange="selectLineup(this.value)">
+        ${lineups.map(l => `<option value="${l.id}"${l.id === lineup.id ? ' selected' : ''}>${l.name}</option>`).join('')}
+      </select>
+    </div>` : '';
+
+  if (!formation) {
+    el.innerHTML = `${header}${picker}
+      <div class="empty-state"><p>This lineup's formation was deleted.</p>
+      ${admin ? `<button class="btn btn-danger" onclick="deleteLineup('${lineup.id}')">Delete Lineup</button>` : ''}</div>`;
+    return;
+  }
+
+  // Attack at the top, keeper at the bottom — so the stored defence-first
+  // lines render in reverse.
+  const rows = formation.lines.map((count, lineIndex) => {
+    const slots = Array.from({ length: count }, (_, slotIndex) => {
+      const key = `${lineIndex}-${slotIndex}`;
+      return slotAvatarHTML(getPlayer(slotPlayerId(lineup, key)), admin, key);
+    }).join('');
+    return `<div class="pitch-line">${slots}</div>`;
+  }).reverse().join('');
+
+  const keeper = `<div class="pitch-line">${slotAvatarHTML(getPlayer(lineup.goalkeeperId), admin, 'gk')}</div>`;
+  const filled = assignedPlayerIds(lineup).length;
+  const total = outfieldCount(formation.lines) + 1;
+
+  el.innerHTML = `${header}${picker}
+    <div class="formation-name">${formation.name}</div>
+    <div class="pitch">${rows}${keeper}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem">
+      <span style="font-size:0.78rem;color:var(--muted)">${filled} of ${total} placed</span>
+      ${admin ? `<button class="btn btn-sm btn-danger" onclick="deleteLineup('${lineup.id}')">Delete</button>` : ''}
+    </div>`;
+}
+
+// ── Lineup CRUD ──
+function openNewLineupModal() {
+  const formations = data.formations || [];
+  if (!formations.length) return;
+  openModal(`
+    <h2>New Lineup</h2>
+    <div class="form-group">
+      <label>Name</label>
+      <input class="input" id="lineup-name" placeholder="e.g. Starting 9" onkeydown="if(event.key==='Enter')addLineup()">
+    </div>
+    <div class="form-group">
+      <label>Formation</label>
+      <select class="input" id="lineup-formation">
+        ${formations.map(f => `<option value="${f.id}">${f.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="addLineup()">Create</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('lineup-name')?.focus(), 100);
+}
+
+function addLineup() {
+  const name = document.getElementById('lineup-name').value.trim();
+  const formationId = document.getElementById('lineup-formation').value;
+  if (!name || !formationId) return;
+  const lineup = { id: Date.now().toString(), name, formationId, goalkeeperId: null, slots: {}, gameId: null };
+  data.lineups.push(lineup);
+  selectedLineupId = lineup.id;
+  saveData(data);
+  closeModal();
+  render();
+}
+
+function deleteLineup(id) {
+  if (!confirm('Delete this lineup?')) return;
+  data.lineups = data.lineups.filter(l => l.id !== id);
+  if (selectedLineupId === id) selectedLineupId = null;
+  saveData(data);
+  deleteRemoteRow('lineups', id);
+  render();
+}
+
+// ── Placing players ──
+function openSlotPicker(key) {
+  const lineup = getSelectedLineup();
+  if (!lineup || !isAdmin()) return;
+  slotPickTarget = key;
+  const taken = assignedPlayerIds(lineup);
+  const current = slotPlayerId(lineup, key);
+  const rows = sortedPlayers().map(p => {
+    const elsewhere = taken.includes(p.id) && p.id !== current;
+    return `<button class="player-btn${p.id === current ? ' selecting-goal' : ''}" style="${elsewhere ? 'opacity:0.4' : ''}" onclick="assignToSlot('${p.id}')">
+      <span class="p-number">${p.number || '–'}</span>
+      <span class="p-name">${playerShort(p.id)}${elsewhere ? ' •' : ''}</span>
+    </button>`;
+  }).join('');
+  openModal(`
+    <h2>${key === 'gk' ? 'Goalkeeper' : 'Pick Player'}</h2>
+    <div class="player-grid">${rows}</div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      ${current ? `<button class="btn btn-danger" onclick="clearSlot()">Remove</button>` : ''}
+    </div>
+  `);
+}
+
+function assignToSlot(playerId) {
+  const lineup = getSelectedLineup();
+  if (!lineup || !slotPickTarget) return;
+  // A player can only hold one place, so pull them out of wherever they were.
+  if (lineup.goalkeeperId === playerId) lineup.goalkeeperId = null;
+  Object.keys(lineup.slots || {}).forEach(k => { if (lineup.slots[k] === playerId) delete lineup.slots[k]; });
+  if (slotPickTarget === 'gk') lineup.goalkeeperId = playerId;
+  else lineup.slots[slotPickTarget] = playerId;
+  slotPickTarget = null;
+  saveData(data);
+  closeModal();
+  render();
+}
+
+function clearSlot() {
+  const lineup = getSelectedLineup();
+  if (!lineup || !slotPickTarget) return;
+  if (slotPickTarget === 'gk') lineup.goalkeeperId = null;
+  else delete lineup.slots[slotPickTarget];
+  slotPickTarget = null;
+  saveData(data);
+  closeModal();
+  render();
+}
+
+// ── Formations ──
+function openFormationsModal() {
+  const formations = data.formations || [];
+  const admin = isAdmin();
+  const items = formations.map(f => {
+    const used = (data.lineups || []).filter(l => l.formationId === f.id).length;
+    return `<div class="settings-item">
+      <div class="settings-item-left">
+        <span class="settings-item-name">${f.name}</span>
+        <span style="font-size:0.72rem;color:var(--muted)">${outfieldCount(f.lines) + 1}-a-side${used ? ` · ${used} lineup${used > 1 ? 's' : ''}` : ''}</span>
+      </div>
+      ${admin ? `<button class="btn btn-sm btn-danger" onclick="deleteFormation('${f.id}')">Delete</button>` : ''}
+    </div>`;
+  }).join('');
+  openModal(`
+    <h2>Formations</h2>
+    ${items || '<p style="color:var(--muted);font-size:0.9rem">None yet.</p>'}
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Close</button>
+      ${admin ? `<button class="btn" onclick="openFormationModal()">New</button>` : ''}
+    </div>
+  `);
+}
+
+function openFormationModal() {
+  formationDraft = [3, 2, 3];
+  renderFormationModal();
+}
+
+function setFormationLineCount(n) {
+  const next = [];
+  for (let i = 0; i < n; i++) next.push(formationDraft[i] !== undefined ? formationDraft[i] : 1);
+  formationDraft = next;
+  renderFormationModal();
+}
+
+function adjustFormationLine(index, delta) {
+  const next = formationDraft[index] + delta;
+  if (next < LINEUP_MIN_PER_LINE || next > LINEUP_MAX_PER_LINE) return;
+  formationDraft[index] = next;
+  renderFormationModal();
+}
+
+function renderFormationModal() {
+  const lines = formationDraft;
+  const outfield = outfieldCount(lines);
+  const needed = DEFAULT_SQUAD_SIZE - 1;
+  const ok = outfield === needed;
+  const exists = (data.formations || []).some(f => f.name === formationName(lines));
+
+  // Listed defence -> attack, matching how the name reads.
+  const steppers = lines.map((count, i) => `
+    <div class="line-stepper">
+      <span style="font-size:0.8rem;color:var(--muted)">${i === 0 ? 'Defence' : i === lines.length - 1 ? 'Attack' : `Line ${i + 1}`}</span>
+      <span style="display:flex;align-items:center;gap:0.6rem">
+        <button class="btn btn-sm btn-outline" onclick="adjustFormationLine(${i},-1)" style="padding:0.3rem 0.6rem;line-height:1"${count <= LINEUP_MIN_PER_LINE ? ' disabled' : ''}>−</button>
+        <span style="font-weight:700;min-width:1rem;text-align:center">${count}</span>
+        <button class="btn btn-sm btn-outline" onclick="adjustFormationLine(${i},1)" style="padding:0.3rem 0.6rem;line-height:1"${count >= LINEUP_MAX_PER_LINE ? ' disabled' : ''}>+</button>
+      </span>
+    </div>`).join('');
+
+  const lineButtons = [];
+  for (let n = LINEUP_MIN_LINES; n <= LINEUP_MAX_LINES; n++) {
+    lineButtons.push(`<button class="btn btn-sm${lines.length === n ? '' : ' btn-outline'}" onclick="setFormationLineCount(${n})">${n}</button>`);
+  }
+
+  openModal(`
+    <h2>New Formation</h2>
+    <div class="form-group">
+      <label>Lines</label>
+      <div style="display:flex;gap:0.5rem">${lineButtons.join('')}</div>
+    </div>
+    <div class="form-group">
+      <label>Players per line</label>
+      ${steppers}
+    </div>
+    <div style="font-size:0.85rem;margin-bottom:0.5rem;color:${ok ? 'var(--muted)' : 'var(--red)'}">
+      ${formationName(lines)} — keeper + ${outfield} outfield = ${outfield + 1} players${ok ? '' : ` (needs ${needed} outfield for ${DEFAULT_SQUAD_SIZE}-a-side)`}
+    </div>
+    ${exists ? `<div style="font-size:0.85rem;color:var(--red);margin-bottom:0.5rem">A ${formationName(lines)} formation already exists.</div>` : ''}
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="addFormation()"${ok && !exists ? '' : ' disabled style="opacity:0.45"'}>Save</button>
+    </div>
+  `);
+}
+
+function addFormation() {
+  const lines = formationDraft;
+  if (!lines || outfieldCount(lines) !== DEFAULT_SQUAD_SIZE - 1) return;
+  if ((data.formations || []).some(f => f.name === formationName(lines))) return;
+  const formation = { id: Date.now().toString(), name: formationName(lines), lines: lines.slice(), squadSize: DEFAULT_SQUAD_SIZE };
+  data.formations.push(formation);
+  formationDraft = null;
+  saveData(data);
+  closeModal();
+  render();
+}
+
+function deleteFormation(id) {
+  const used = (data.lineups || []).filter(l => l.formationId === id).length;
+  if (!confirm(used ? `Delete this formation? ${used} lineup${used > 1 ? 's' : ''} using it will be left without one.` : 'Delete this formation?')) return;
+  data.formations = data.formations.filter(f => f.id !== id);
+  saveData(data);
+  deleteRemoteRow('formations', id);
+  closeModal();
+  render();
 }
 
 function renderRoster() {
