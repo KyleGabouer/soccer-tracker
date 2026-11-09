@@ -447,54 +447,57 @@
       .status-badge.is-live { animation: none; }
     }
 
+    /* Fixed height, not min-height: a 4-line formation has five rows to a
+       3-line formation's four, and with space-evenly a min-height would let
+       the pitch grow and shift between formations. */
     .pitch {
       background: var(--pitch);
       border-radius: var(--radius);
-      padding: 1.1rem 0.75rem;
+      padding: 1rem 0.6rem;
       display: flex;
       flex-direction: column;
       justify-content: space-evenly;
-      gap: 0.9rem;
-      min-height: 340px;
+      gap: 0.5rem;
+      height: 420px;
     }
 
     .pitch-line {
       display: flex;
       justify-content: center;
-      gap: 0.6rem;
+      gap: 0.5rem;
     }
 
     .pitch-slot {
-      width: 52px;
-      height: 52px;
-      border-radius: 50%;
-      border: 3px solid #fff;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-      background: var(--surface2);
-      overflow: hidden;
+      width: 58px;
       flex-shrink: 0;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
+      gap: 0.18rem;
+      background: none;
+      border: none;
       padding: 0;
       cursor: default;
     }
 
-    .pitch-slot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .pitch-slot .jersey {
+      width: 46px;
+      height: 46px;
+      display: block;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+    }
 
-    .pitch-slot .slot-initials {
-      font-size: 0.72rem;
+    .pitch-slot .slot-name {
+      font-size: 0.6rem;
       font-weight: 700;
-      color: var(--muted);
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
-
-    .pitch-slot.is-empty {
-      background: rgba(255,255,255,0.14);
-      border-style: dashed;
-      border-color: rgba(255,255,255,0.75);
-    }
-
-    .pitch-slot.is-empty .slot-initials { color: rgba(255,255,255,0.9); font-size: 1rem; }
 
     .pitch-slot.tappable { cursor: pointer; }
     .pitch-slot.tappable:active { transform: scale(0.94); }
@@ -2175,16 +2178,30 @@ function assignedPlayerIds(lineup) {
   return [lineup.goalkeeperId, ...Object.values(lineup.slots || {})].filter(Boolean);
 }
 
+// Shirt silhouette with the squad number on the back, the way a lineup
+// graphic reads. Empty slots keep the same outline so rows stay aligned.
+const JERSEY_PATH = 'M9 2.4 L4.4 4.4 L2.4 9 L6 10.6 L6.6 9.1 L6.6 21.6 L17.4 21.6 L17.4 9.1 L18 10.6 L21.6 9 L19.6 4.4 L15 2.4 C14.2 3.9 13.2 4.7 12 4.7 C10.8 4.7 9.8 3.9 9 2.4 Z';
+
+function jerseySVG(label, empty) {
+  if (empty) {
+    return `<svg class="jersey" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="${JERSEY_PATH}" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.8)" stroke-width="1.1" stroke-dasharray="2.4 1.9" stroke-linejoin="round"/>
+      <text x="12" y="16.6" text-anchor="middle" font-size="8" font-weight="700" fill="rgba(255,255,255,0.9)">+</text>
+    </svg>`;
+  }
+  return `<svg class="jersey" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="${JERSEY_PATH}" fill="#fff"/>
+    <text x="12" y="16.8" text-anchor="middle" font-size="7.6" font-weight="800" fill="#0a0a0a" font-family="inherit">${label}</text>
+  </svg>`;
+}
+
 function slotAvatarHTML(player, tappable, key) {
   const inner = player
-    ? (player.photo
-        ? `<img src="${player.photo}" alt="${player.name}">`
-        : `<span class="slot-initials">${getInitials(player.name)}</span>`)
-    : `<span class="slot-initials">+</span>`;
-  const cls = `pitch-slot${player ? '' : ' is-empty'}${tappable ? ' tappable' : ''}`;
+    ? `${jerseySVG(player.number || '–', false)}<span class="slot-name">${playerShort(player.id)}</span>`
+    : jerseySVG(null, true);
+  const cls = `pitch-slot${tappable ? ' tappable' : ''}`;
   const onclick = tappable ? ` onclick="openSlotPicker('${key}')"` : '';
-  const title = player ? ` title="${player.name}"` : '';
-  return `<button class="${cls}"${onclick}${title} aria-label="${player ? player.name : 'Empty slot'}">${inner}</button>`;
+  return `<button class="${cls}"${onclick} aria-label="${player ? player.name : 'Empty slot'}">${inner}</button>`;
 }
 
 function renderLineups() {
