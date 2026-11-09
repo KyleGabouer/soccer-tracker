@@ -495,6 +495,35 @@
       box-shadow: inset 0 0 0 3px #fff, 0 1px 3px rgba(0,0,0,0.3);
     }
 
+    /* Keepers stand out wherever they appear in the Lineups tab. */
+    .slot-badge.is-goalie {
+      background: var(--accent);
+      color: var(--accent-ink);
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      margin-bottom: 0;
+    }
+
+    .checkbox-row input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--text);
+      cursor: pointer;
+    }
+
+    .checkbox-row span {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
     .pitch-slot.is-empty .slot-badge {
       background: rgba(255,255,255,0.16);
       border: 1.5px dashed rgba(255,255,255,0.8);
@@ -965,7 +994,7 @@ function loadDataLocal() {
   if (!d.ownTeam) d.ownTeam = { name: '', logo: null };
   if (d.ownTeam.name === undefined) d.ownTeam.name = '';
   if (d.ownTeam.logo === undefined) d.ownTeam.logo = null;
-  d.players.forEach(p => { if (p.photo === undefined) p.photo = null; });
+  d.players.forEach(p => { if (p.photo === undefined) p.photo = null; if (p.goalie === undefined) p.goalie = false; });
   d.teams.forEach(t => { if (t.logo === undefined) t.logo = null; });
   d.games.forEach(g => {
     if (g.competitionId === undefined) g.competitionId = null;
@@ -1021,7 +1050,7 @@ async function loadDataFromSupabase() {
   }
 
   const players = (playersRes.data || []).map(p => ({
-    id: p.id, name: p.name, number: p.number, photo: p.photo
+    id: p.id, name: p.name, number: p.number, photo: p.photo, goalie: p.goalie || false
   }));
 
   const games = (gamesRes.data || []).map(mapGameRow);
@@ -1091,7 +1120,7 @@ async function syncToSupabase(d) {
 
   try {
     const players = d.players.map(p => ({
-      id: p.id, name: p.name, number: p.number, photo: p.photo
+      id: p.id, name: p.name, number: p.number, photo: p.photo, goalie: !!p.goalie
     }));
     const games = d.games.map(g => ({
       id: g.id, opponent: g.opponent, date: g.date,
@@ -1606,6 +1635,12 @@ function openPlayerProfile(playerId) {
     <div class="form-group">
       <label>Number</label>
       <input class="input" id="profile-number" value="${player.number || ''}" style="max-width:100px">
+    </div>
+    <div class="form-group">
+      <label class="checkbox-row">
+        <input type="checkbox" id="profile-goalie"${player.goalie ? ' checked' : ''}>
+        <span>Goalkeeper</span>
+      </label>
     </div>` : `<div style="text-align:center;font-weight:700;font-size:1.05rem;margin-bottom:0.75rem">${player.number ? '#' + player.number + ' ' : ''}${player.name}</div>`}
     <div class="profile-stats-row">
       <div class="profile-stat"><div class="ps-val">${stats.goals}</div><div class="ps-label">Goals</div></div>
@@ -1628,6 +1663,7 @@ function savePlayerProfile(playerId) {
   if (!name) return;
   player.name = name;
   player.number = number;
+  player.goalie = !!document.getElementById('profile-goalie')?.checked;
   saveData(data);
   closeModal();
   render();
@@ -2215,7 +2251,7 @@ function assignedPlayerIds(lineup) {
 // same footprint (dashed, with a +) so rows stay aligned either way.
 function slotAvatarHTML(player, tappable, key) {
   const inner = player
-    ? `<span class="slot-badge">${player.number || '–'}</span><span class="slot-name">${playerShort(player.id)}</span>`
+    ? `<span class="slot-badge${player.goalie ? ' is-goalie' : ''}">${player.number || '–'}</span><span class="slot-name">${playerShort(player.id)}</span>`
     : `<span class="slot-badge">+</span>`;
   const cls = `pitch-slot${player ? '' : ' is-empty'}${tappable ? ' tappable' : ''}`;
   const onclick = tappable ? ` onclick="openSlotPicker('${key}')"` : '';
@@ -2290,7 +2326,7 @@ function renderLineups() {
       <label>Bench</label>
       <div class="bench-row">
         ${bench.map(p => `<div class="bench-slot">
-          <span class="slot-badge">${p.number || '–'}</span>
+          <span class="slot-badge${p.goalie ? ' is-goalie' : ''}">${p.number || '–'}</span>
           <span class="slot-name">${playerShort(p.id)}</span>
         </div>`).join('')}
       </div>
