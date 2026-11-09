@@ -480,7 +480,7 @@
       cursor: default;
     }
 
-    .pitch-slot .slot-badge {
+    .slot-badge {
       width: 44px;
       height: 44px;
       border-radius: 50%;
@@ -503,7 +503,7 @@
       box-shadow: none;
     }
 
-    .pitch-slot .slot-name {
+    .slot-name {
       font-size: 0.6rem;
       font-weight: 700;
       color: #fff;
@@ -514,6 +514,23 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+
+    /* Same discs as the pitch, but on the page background rather than grass. */
+    .bench-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 0.5rem;
+    }
+
+    .bench-slot {
+      width: 58px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.18rem;
+    }
+
+    .bench-slot .slot-name { color: var(--muted); }
 
     .pitch-slot.tappable { cursor: pointer; }
     .pitch-slot.tappable:active { transform: scale(0.94); }
@@ -2265,16 +2282,27 @@ function renderLineups() {
   }).reverse().join('');
 
   const keeper = `<div class="pitch-line">${slotAvatarHTML(getPlayer(lineup.goalkeeperId), admin, 'gk')}</div>`;
-  const filled = assignedPlayerIds(lineup).length;
-  const total = outfieldCount(formation.lines) + 1;
+  // Whoever isn't on the pitch, in squad-number order.
+  const placed = assignedPlayerIds(lineup);
+  const bench = sortedPlayers().filter(p => !placed.includes(p.id));
+  const benchHTML = bench.length ? `
+    <div class="card" style="margin-top:1rem">
+      <label>Bench</label>
+      <div class="bench-row">
+        ${bench.map(p => `<div class="bench-slot">
+          <span class="slot-badge">${p.number || '–'}</span>
+          <span class="slot-name">${playerShort(p.id)}</span>
+        </div>`).join('')}
+      </div>
+    </div>` : '';
 
   el.innerHTML = `${header}${picker}
     <div class="formation-name">${formation.name}</div>
     <div class="pitch">${rows}${keeper}</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem">
-      <span style="font-size:0.78rem;color:var(--muted)">${filled} of ${total} placed</span>
-      ${admin ? `<button class="btn btn-sm btn-danger" onclick="deleteLineup('${lineup.id}')">Delete</button>` : ''}
-    </div>`;
+    ${benchHTML}
+    ${admin ? `<div style="display:flex;justify-content:flex-end;margin-top:1rem">
+      <button class="btn btn-sm btn-danger" onclick="deleteLineup('${lineup.id}')">Delete</button>
+    </div>` : ''}`;
 }
 
 // ── Lineup CRUD ──
