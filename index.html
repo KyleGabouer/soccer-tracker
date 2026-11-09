@@ -564,14 +564,6 @@
     .pitch-slot.tappable { cursor: pointer; }
     .pitch-slot.tappable:active { transform: scale(0.94); }
 
-    .formation-name {
-      font-size: 1.5rem;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      color: var(--muted);
-      margin-bottom: 0.5rem;
-    }
-
     .line-stepper {
       display: flex;
       align-items: center;
@@ -1209,7 +1201,8 @@ let viewingGameId = null;
 let statsCompetitionFilter = null;
 let gamesCompetitionFilter = null;
 let modalReturnStash = null; // remembers which game modal to reopen after an inline "+ Add new…" flow
-let selectedLineupId = null; // which saved lineup the Lineups tab is showing
+let selectedFormationId = null; // which formation the Lineups dropdown is on
+let selectedLineupId = null; // which of that formation's lineups is showing
 let formationDraft = null;   // line sizes being built in the New Formation modal
 let slotPickTarget = null;   // slot awaiting a player pick ('gk', or 'lineIndex-slotIndex')
 
@@ -2233,9 +2226,28 @@ function getFormationById(id) {
   return (data.formations || []).find(f => f.id === id);
 }
 
+function getSelectedFormation() {
+  const formations = data.formations || [];
+  return formations.find(f => f.id === selectedFormationId) || formations[0] || null;
+}
+
+function lineupsForFormation(formationId) {
+  return (data.lineups || []).filter(l => l.formationId === formationId);
+}
+
+// Scoped to the selected formation: a lineup belonging to another formation is
+// never "selected", so switching formations always lands on one of its own.
 function getSelectedLineup() {
-  const lineups = data.lineups || [];
-  return lineups.find(l => l.id === selectedLineupId) || lineups[0] || null;
+  const formation = getSelectedFormation();
+  if (!formation) return null;
+  const mine = lineupsForFormation(formation.id);
+  return mine.find(l => l.id === selectedLineupId) || mine[0] || null;
+}
+
+function selectFormation(id) {
+  selectedFormationId = id;
+  selectedLineupId = null; // fall through to the first lineup in the new formation
+  render();
 }
 
 function selectLineup(id) {
@@ -2287,30 +2299,29 @@ function renderLineups() {
     return;
   }
 
-  if (!lineups.length) {
-    el.innerHTML = `${header}
+  const formation = getSelectedFormation();
+  const mine = lineupsForFormation(formation.id);
+  const lineup = getSelectedLineup();
+
+  // Formation picker, then that formation's lineups as pills.
+  const picker = `
+    <div class="form-group">
+      <select class="input" onchange="selectFormation(this.value)">
+        ${formations.map(f => `<option value="${f.id}"${f.id === formation.id ? ' selected' : ''}>${f.name}</option>`).join('')}
+      </select>
+    </div>`;
+
+  const pills = mine.length ? `<div class="filter-row">${
+    mine.map(l => `<button class="filter-pill${lineup && l.id === lineup.id ? ' active' : ''}" onclick="selectLineup('${l.id}')">${l.name}</button>`).join('')
+  }</div>` : '';
+
+  if (!lineup) {
+    el.innerHTML = `${header}${picker}
       <div class="empty-state">
-        <h3>No lineups yet</h3>
-        <p>${admin ? 'Create a lineup to start placing players into a formation.' : 'Check back once a lineup has been set.'}</p>
+        <h3>No lineups in ${formation.name}</h3>
+        <p>${admin ? 'Create one to start placing players into this shape.' : 'Check back once a lineup has been set.'}</p>
         ${admin ? `<button class="btn" onclick="openNewLineupModal()">New Lineup</button>` : ''}
       </div>`;
-    return;
-  }
-
-  const lineup = getSelectedLineup();
-  const formation = getFormationById(lineup.formationId);
-
-  const picker = lineups.length > 1 || admin ? `
-    <div class="form-group">
-      <select class="input" onchange="selectLineup(this.value)">
-        ${lineups.map(l => `<option value="${l.id}"${l.id === lineup.id ? ' selected' : ''}>${l.name}</option>`).join('')}
-      </select>
-    </div>` : '';
-
-  if (!formation) {
-    el.innerHTML = `${header}${picker}
-      <div class="empty-state"><p>This lineup's formation was deleted.</p>
-      ${admin ? `<button class="btn btn-danger" onclick="deleteLineup('${lineup.id}')">Delete Lineup</button>` : ''}</div>`;
     return;
   }
 
@@ -2339,8 +2350,7 @@ function renderLineups() {
       </div>
     </div>` : '';
 
-  el.innerHTML = `${header}${picker}
-    <div class="formation-name">${formation.name}</div>
+  el.innerHTML = `${header}${picker}${pills}
     <div class="pitch">${rows}${keeper}</div>
     ${benchHTML}
     ${admin ? `<div style="display:flex;justify-content:flex-end;margin-top:1rem">
@@ -2365,6 +2375,8 @@ function onLineupFormationPickerChange(selectEl) {
 
 function openNewLineupModal(prefill) {
   prefill = prefill || {};
+  // Default to whichever formation the page is showing.
+  if (prefill.formationId === undefined) prefill.formationId = getSelectedFormation()?.id ?? null;
   openModal(`
     <h2>New Lineup</h2>
     <div class="form-group">
@@ -2391,6 +2403,8 @@ function addLineup() {
   if (!name || !formationId) return;
   const lineup = { id: Date.now().toString(), name, formationId, goalkeeperId: null, slots: {}, gameId: null };
   data.lineups.push(lineup);
+  // Jump to it, following the formation it was filed under.
+  selectedFormationId = formationId;
   selectedLineupId = lineup.id;
   saveData(data);
   closeModal();
@@ -2585,11 +2599,19 @@ function addFormation() {
 }
 
 function deleteFormation(id) {
-  const used = (data.lineups || []).filter(l => l.formationId === id).length;
-  if (!confirm(used ? `Delete this formation? ${used} lineup${used > 1 ? 's' : ''} using it will be left without one.` : 'Delete this formation?')) return;
+  // Lineups are reached *through* their formation now, so one left behind
+  // would be unreachable rather than merely formation-less. Remove them too.
+  const orphans = (data.lineups || []).filter(l => l.formationId === id);
+  const msg = orphans.length
+    ? `Delete this formation and its ${orphans.length} lineup${orphans.length > 1 ? 's' : ''} (${orphans.map(l => l.name).join(', ')})?`
+    : 'Delete this formation?';
+  if (!confirm(msg)) return;
   data.formations = data.formations.filter(f => f.id !== id);
+  data.lineups = data.lineups.filter(l => l.formationId !== id);
+  if (selectedFormationId === id) { selectedFormationId = null; selectedLineupId = null; }
   saveData(data);
   deleteRemoteRow('formations', id);
+  orphans.forEach(l => deleteRemoteRow('lineups', l.id));
   closeModal();
   render();
 }
