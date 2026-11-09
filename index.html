@@ -480,11 +480,27 @@
       cursor: default;
     }
 
-    .pitch-slot .jersey {
-      width: 46px;
-      height: 46px;
-      display: block;
-      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+    .pitch-slot .slot-badge {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--text);
+      color: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+
+    .pitch-slot.is-empty .slot-badge {
+      background: rgba(255,255,255,0.16);
+      border: 1.5px dashed rgba(255,255,255,0.8);
+      color: rgba(255,255,255,0.9);
+      font-weight: 700;
+      box-shadow: none;
     }
 
     .pitch-slot .slot-name {
@@ -2178,28 +2194,13 @@ function assignedPlayerIds(lineup) {
   return [lineup.goalkeeperId, ...Object.values(lineup.slots || {})].filter(Boolean);
 }
 
-// Shirt silhouette with the squad number on the back, the way a lineup
-// graphic reads. Empty slots keep the same outline so rows stay aligned.
-const JERSEY_PATH = 'M9 2.4 L4.4 4.4 L2.4 9 L6 10.6 L6.6 9.1 L6.6 21.6 L17.4 21.6 L17.4 9.1 L18 10.6 L21.6 9 L19.6 4.4 L15 2.4 C14.2 3.9 13.2 4.7 12 4.7 C10.8 4.7 9.8 3.9 9 2.4 Z';
-
-function jerseySVG(label, empty) {
-  if (empty) {
-    return `<svg class="jersey" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="${JERSEY_PATH}" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.8)" stroke-width="1.1" stroke-dasharray="2.4 1.9" stroke-linejoin="round"/>
-      <text x="12" y="16.6" text-anchor="middle" font-size="8" font-weight="700" fill="rgba(255,255,255,0.9)">+</text>
-    </svg>`;
-  }
-  return `<svg class="jersey" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="${JERSEY_PATH}" fill="#fff"/>
-    <text x="12" y="16.8" text-anchor="middle" font-size="7.6" font-weight="800" fill="#0a0a0a" font-family="inherit">${label}</text>
-  </svg>`;
-}
-
+// Squad number in a dark disc, first name underneath. Empty slots keep the
+// same footprint (dashed, with a +) so rows stay aligned either way.
 function slotAvatarHTML(player, tappable, key) {
   const inner = player
-    ? `${jerseySVG(player.number || '–', false)}<span class="slot-name">${playerShort(player.id)}</span>`
-    : jerseySVG(null, true);
-  const cls = `pitch-slot${tappable ? ' tappable' : ''}`;
+    ? `<span class="slot-badge">${player.number || '–'}</span><span class="slot-name">${playerShort(player.id)}</span>`
+    : `<span class="slot-badge">+</span>`;
+  const cls = `pitch-slot${player ? '' : ' is-empty'}${tappable ? ' tappable' : ''}`;
   const onclick = tappable ? ` onclick="openSlotPicker('${key}')"` : '';
   return `<button class="${cls}"${onclick} aria-label="${player ? player.name : 'Empty slot'}">${inner}</button>`;
 }
