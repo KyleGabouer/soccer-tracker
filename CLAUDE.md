@@ -34,7 +34,8 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
 - Stats view filter pills to filter season stats by competition
 - Per-game stat breakdowns
 - Season totals per player with sorting
-- 5-tab navigation: Game, Schedule, Stats, Team, Settings/Login
+- Lineups — build formations (a goalkeeper plus 3-4 outfield lines of 1-4 players each) and place roster players into them. Saved lineups are chosen from a dropdown and drawn on a pitch as numbered discs with first names. Formations start empty; none are seeded.
+- 6-tab navigation: Game, Schedule, Stats, Team, Lineups, Settings/Login
 
 ## Data Model
 ```js
@@ -46,6 +47,8 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
     clock: { halfLengthMinutes, half, running, startedAt, accumulatedSeconds }
   }],
   competitions: [{ id, name, emoji, categoryType }],
+  formations: [{ id, name, lines, squadSize }],  // lines = outfield rows, defence -> attack; [3,2,3] is a 3-2-3
+  lineups: [{ id, name, formationId, goalkeeperId, slots, gameId }],
   teams: [{ id, name, logo }],                  // logo retained in the schema but unused; opponents render name-only
   ownTeam: { name, logo },
   activeGameId: null | string      // stays set after a game ends, until the admin clears it
@@ -58,10 +61,16 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
 - On page load: renders from localStorage immediately, refreshes from Supabase once, then a Realtime subscription keeps `games`/`app_state` live from then on (also re-syncs on reconnect/tab-visible, in case a device missed pushed events while asleep/backgrounded)
 - Game clock is a count-up stopwatch (not a countdown): `elapsed = accumulatedSeconds + (running ? now - startedAt : 0)`, so any device can compute the correct current time with zero per-second writes
 - `getActiveGame()` can return a *finished* game (see Clear above), so anything that mutates a game through it guards on `game.finished`
-- Supabase tables: `players`, `games`, `competitions`, `teams`, `app_state`
+- Formations name themselves from their shape (`lines.join('-')`), and the keeper is implicit — never part of `lines`. `squadSize` is stored per formation rather than hardcoded, and the builder validates `lines` against it, so 7v7/11v11 can be added without a migration. 9v9 (8 outfield) is the only size the UI offers today.
+- `lineups.slots` is a sparse `"lineIndex-slotIndex"` -> player id map, so half-filled lineups save fine and survive a later edit to the formation's shape. Assigning a player who is already placed moves them rather than duplicating.
+- `lineups.game_id` exists but is unused — it lets a lineup be tied to a match later as a UI-only change.
+- The `formations`/`lineups` tables are optional at runtime: if `supabase-lineups-migration.sql` hasn't been run, those selects fail, a warning is logged, and the rest of the app loads normally. Their upserts are skipped while empty so saves stay quiet.
+- `renderLineups()` only writes into its own container, so moving Lineups off the tab bar later is a handful of lines (note `switchView()` assumes every view has a matching tab button).
+- Supabase tables: `players`, `games`, `competitions`, `teams`, `formations`, `lineups`, `app_state`
 - `games.events` stored as JSONB column (not a separate table)
 
 ## What We Don't Do
 - No accounts for anyone but the one admin (this is a personal tool; everyone else is a read-only viewer)
 - No live streaming or video
-- No complex formation or positioning data
+- No drag-and-drop on the pitch — slots are tap-to-assign (far more reliable on a phone)
+- No per-player positional stats; a lineup records who lines up where, nothing more
