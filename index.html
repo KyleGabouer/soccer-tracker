@@ -1980,7 +1980,7 @@ function openEditTeamModal(teamId) {
 // values, opens the Add Team/Competition modal on top, then reopens the
 // original modal (with the new item pre-selected) once it's saved or cancelled.
 function sanitizePickerValue(v) {
-  return (!v || v === '__add_team__' || v === '__add_comp__') ? null : v;
+  return (!v || v === '__add_team__' || v === '__add_comp__' || v === '__add_formation__') ? null : v;
 }
 
 function captureGameModalValues(type, gameId) {
@@ -1989,6 +1989,12 @@ function captureGameModalValues(type, gameId) {
       teamId: sanitizePickerValue(document.getElementById('game-team')?.value),
       competitionId: sanitizePickerValue(document.getElementById('game-competition')?.value),
       halfLengthMinutes: document.getElementById('game-half-length')?.value || null
+    }};
+  }
+  if (type === 'newLineup') {
+    return { type, values: {
+      name: document.getElementById('lineup-name')?.value || '',
+      formationId: sanitizePickerValue(document.getElementById('lineup-formation')?.value)
     }};
   }
   if (type === 'editGame') {
@@ -2013,6 +2019,7 @@ function captureGameModalValues(type, gameId) {
 function reopenStashedModal(stash, overrides) {
   const values = { ...stash.values, ...(overrides || {}) };
   if (stash.type === 'newGame') openNewGameModal(values);
+  else if (stash.type === 'newLineup') openNewLineupModal(values);
   else if (stash.type === 'editGame') openEditGameModal(stash.gameId, values);
   else if (stash.type === 'histGame') openAddHistoricalGameModal(values);
 }
@@ -2342,23 +2349,36 @@ function renderLineups() {
 }
 
 // ── Lineup CRUD ──
-function openNewLineupModal() {
-  const formations = data.formations || [];
-  if (!formations.length) return;
+function formationPickerOptionsHTML(selectedId) {
+  const opts = (data.formations || [])
+    .map(f => `<option value="${f.id}"${f.id === selectedId ? ' selected' : ''}>${f.name}</option>`)
+    .join('');
+  const addNew = isAdmin() ? `<option value="__add_formation__">+ Add new formation…</option>` : '';
+  return `${opts}${addNew}`;
+}
+
+function onLineupFormationPickerChange(selectEl) {
+  if (selectEl.value !== '__add_formation__') return;
+  modalReturnStash = captureGameModalValues('newLineup');
+  openFormationModal();
+}
+
+function openNewLineupModal(prefill) {
+  prefill = prefill || {};
   openModal(`
     <h2>New Lineup</h2>
     <div class="form-group">
       <label>Name</label>
-      <input class="input" id="lineup-name" placeholder="e.g. Starting 9" onkeydown="if(event.key==='Enter')addLineup()">
+      <input class="input" id="lineup-name" placeholder="e.g. Starting 9" value="${prefill.name || ''}" onkeydown="if(event.key==='Enter')addLineup()">
     </div>
     <div class="form-group">
       <label>Formation</label>
-      <select class="input" id="lineup-formation">
-        ${formations.map(f => `<option value="${f.id}">${f.name}</option>`).join('')}
+      <select class="input" id="lineup-formation" onchange="onLineupFormationPickerChange(this)">
+        ${formationPickerOptionsHTML(prefill.formationId ?? null)}
       </select>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-outline" onclick="cancelInlineAddModal()">Cancel</button>
       <button class="btn" onclick="addLineup()">Create</button>
     </div>
   `);
@@ -2367,7 +2387,7 @@ function openNewLineupModal() {
 
 function addLineup() {
   const name = document.getElementById('lineup-name').value.trim();
-  const formationId = document.getElementById('lineup-formation').value;
+  const formationId = sanitizePickerValue(document.getElementById('lineup-formation').value);
   if (!name || !formationId) return;
   const lineup = { id: Date.now().toString(), name, formationId, goalkeeperId: null, slots: {}, gameId: null };
   data.lineups.push(lineup);
@@ -2546,7 +2566,7 @@ function renderFormationModal() {
     </div>
     ${exists ? `<div style="font-size:0.85rem;color:var(--red);margin-bottom:0.5rem">A ${formationName(lines)} formation already exists.</div>` : ''}
     <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-outline" onclick="cancelInlineAddModal()">Cancel</button>
       <button class="btn" onclick="addFormation()"${ok && !exists ? '' : ' disabled style="opacity:0.45"'}>Save</button>
     </div>
   `);
@@ -2560,7 +2580,7 @@ function addFormation() {
   data.formations.push(formation);
   formationDraft = null;
   saveData(data);
-  closeModal();
+  returnFromInlineAddModal({ formationId: formation.id });
   render();
 }
 
