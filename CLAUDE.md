@@ -34,13 +34,16 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
 - Stats view filter pills to filter season stats by competition
 - Per-game stat breakdowns
 - Season totals per player with sorting
-- Lineups — build formations (a goalkeeper plus 3-4 outfield lines of 1-4 players each) and place roster players into them. Saved lineups are chosen from a dropdown and drawn on a pitch as numbered discs with first names. Formations start empty; none are seeded.
+- Lineups — build formations (a goalkeeper plus 3-4 outfield lines of 1-4 players each) and place roster players into them. Formations start empty; none are seeded.
+- The Lineups tab is formation-first: the dropdown picks a formation, and that formation's lineups sit beneath it as filter pills, so one formation can hold several lineups. Lineup names are editable; "+ Add new formation…" in the New Lineup picker builds one without leaving the flow.
+- The pitch draws each player as a dark disc with their squad number and first name, attack at the top and the keeper at the bottom. Players flagged as goalkeepers use the accent-yellow disc instead, on the pitch and the bench alike.
+- Anyone on the roster but not on the pitch is listed below it as the bench.
 - 6-tab navigation: Game, Schedule, Stats, Team, Lineups, Settings/Login
 
 ## Data Model
 ```js
 {
-  players: [{ id, name, number, photo }],       // photo: base64 string or null
+  players: [{ id, name, number, photo, goalie }], // photo: base64 string or null; goalie set by a checkbox on the player profile
   games: [{
     id, opponent, date, events, finished,
     competitionId, teamId, opponentGoals,
@@ -64,6 +67,9 @@ Kyle — a soccer parent who wants to track his son's team stats quickly and eas
 - Formations name themselves from their shape (`lines.join('-')`), and the keeper is implicit — never part of `lines`. `squadSize` is stored per formation rather than hardcoded, and the builder validates `lines` against it, so 7v7/11v11 can be added without a migration. 9v9 (8 outfield) is the only size the UI offers today.
 - `lineups.slots` is a sparse `"lineIndex-slotIndex"` -> player id map, so half-filled lineups save fine and survive a later edit to the formation's shape. Assigning a player who is already placed moves them rather than duplicating.
 - `lineups.game_id` exists but is unused — it lets a lineup be tied to a match later as a UI-only change.
+- Lineup selection is scoped to the selected formation (`getSelectedLineup()` only considers that formation's lineups), so switching formations never leaves a stale lineup from another one selected.
+- Deleting a formation also deletes its lineups, naming them in the confirm. Lineups are reached *through* a formation now, so one left behind would be unreachable in the UI while still syncing.
+- Migrations live in `supabase-*.sql` at the project root and are run by hand in the Supabase SQL editor. `supabase-goalie-migration.sql` is required: every players upsert sends `goalie`, and PostgREST rejects the whole request if the column is missing (42703), which would break saving a player's name and photo too.
 - The `formations`/`lineups` tables are optional at runtime: if `supabase-lineups-migration.sql` hasn't been run, those selects fail, a warning is logged, and the rest of the app loads normally. Their upserts are skipped while empty so saves stay quiet.
 - `renderLineups()` only writes into its own container, so moving Lineups off the tab bar later is a handful of lines (note `switchView()` assumes every view has a matching tab button).
 - Supabase tables: `players`, `games`, `competitions`, `teams`, `formations`, `lineups`, `app_state`
